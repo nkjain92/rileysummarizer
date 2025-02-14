@@ -34,18 +34,42 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
     try {
-      // Extract video ID from YouTube URL (handles both youtube.com and youtu.be formats)
-      let videoId;
-      if (url.includes('youtu.be')) {
-        // Handle youtu.be format
-        videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      } else {
-        // Handle youtube.com format
-        videoId = url.split('v=')[1]?.split('&')[0];
+      // Extract video ID from various YouTube URL formats
+      let videoId = '';
+
+      try {
+        const urlObj = new URL(url);
+
+        if (url.includes('youtu.be')) {
+          // Handle youtu.be format
+          videoId = url.split('youtu.be/')[1]?.split('?')[0] || '';
+        } else if (url.includes('youtube.com/live/')) {
+          // Handle live stream format
+          videoId = url.split('youtube.com/live/')[1]?.split('?')[0] || '';
+        } else if (url.includes('youtube.com/shorts/')) {
+          // Handle shorts format
+          videoId = url.split('youtube.com/shorts/')[1]?.split('?')[0] || '';
+        } else if (urlObj.searchParams.get('v')) {
+          // Handle standard youtube.com format with v parameter
+          const vParam = urlObj.searchParams.get('v');
+          if (vParam) videoId = vParam;
+        }
+      } catch (e) {
+        throw new Error('Invalid URL format. Please enter a valid YouTube URL.');
       }
 
       if (!videoId) {
-        throw new Error('Invalid YouTube URL. Please check the URL and try again.');
+        throw new Error(
+          "Could not extract video ID. Please make sure you're using a valid YouTube video URL.",
+        );
+      }
+
+      // Clean the video ID
+      videoId = videoId.trim();
+
+      // Validate video ID format (allow both standard 11-char IDs and longer live stream IDs)
+      if (!/^[a-zA-Z0-9_-]{11,}$/.test(videoId)) {
+        throw new Error('Invalid YouTube video ID format.');
       }
 
       // Get transcript

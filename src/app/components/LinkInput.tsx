@@ -12,7 +12,8 @@ export default function LinkInput({ onSubmit, isLoading }: LinkInputProps) {
   const [isValid, setIsValid] = useState(false);
 
   const validateYouTubeUrl = (url: string) => {
-    const pattern = /^(https?:\/\/)?(www\.)?(youtube\.com\/(channel\/|watch\?v=)|youtu\.be\/).+/;
+    const pattern =
+      /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|live\/|shorts\/|channel\/)|youtu\.be\/).+/;
     return pattern.test(url);
   };
 
