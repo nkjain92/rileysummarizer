@@ -8,6 +8,7 @@ interface SummaryCardProps {
   date: string;
   summary: string;
   videoUrl: string;
+  tags?: string[];
 }
 
 export default function SummaryCard({
@@ -16,6 +17,7 @@ export default function SummaryCard({
   date,
   summary,
   videoUrl,
+  tags = [],
 }: SummaryCardProps) {
   const [isLoadingDetailed, setIsLoadingDetailed] = useState(false);
   const [detailedSummary, setDetailedSummary] = useState<string | null>(null);
@@ -117,43 +119,56 @@ export default function SummaryCard({
             </motion.div>
           </AnimatePresence>
         </div>
-        <div className='flex justify-end mt-4'>
-          <button
-            onClick={handleGetDetailedSummary}
-            disabled={isLoadingDetailed}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300
-              ${
-                isLoadingDetailed
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:shadow-lg hover:-translate-y-0.5'
-              }`}>
-            {isLoadingDetailed ? (
-              <div className='flex items-center space-x-2'>
-                <svg
-                  className='animate-spin h-4 w-4 text-white'
-                  xmlns='http://www.w3.org/2000/svg'
-                  fill='none'
-                  viewBox='0 0 24 24'>
-                  <circle
-                    className='opacity-25'
-                    cx='12'
-                    cy='12'
-                    r='10'
-                    stroke='currentColor'
-                    strokeWidth='4'></circle>
-                  <path
-                    className='opacity-75'
-                    fill='currentColor'
-                    d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
-                </svg>
-                <span>Generating...</span>
-              </div>
-            ) : isShowingDetailed ? (
-              'Show Brief Summary'
-            ) : (
-              'Show Detailed Summary'
-            )}
-          </button>
+        <div className='flex flex-col space-y-4 mt-4'>
+          {tags.length > 0 && (
+            <div className='flex flex-wrap gap-2'>
+              {tags.map(tag => (
+                <button
+                  key={tag}
+                  className='px-3 py-1 text-sm rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer'>
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className='flex justify-end'>
+            <button
+              onClick={handleGetDetailedSummary}
+              disabled={isLoadingDetailed}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300
+                ${
+                  isLoadingDetailed
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:shadow-lg hover:-translate-y-0.5'
+                }`}>
+              {isLoadingDetailed ? (
+                <div className='flex items-center space-x-2'>
+                  <svg
+                    className='animate-spin h-4 w-4 text-white'
+                    xmlns='http://www.w3.org/2000/svg'
+                    fill='none'
+                    viewBox='0 0 24 24'>
+                    <circle
+                      className='opacity-25'
+                      cx='12'
+                      cy='12'
+                      r='10'
+                      stroke='currentColor'
+                      strokeWidth='4'></circle>
+                    <path
+                      className='opacity-75'
+                      fill='currentColor'
+                      d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
+                  </svg>
+                  <span>Generating...</span>
+                </div>
+              ) : isShowingDetailed ? (
+                'Show Brief Summary'
+              ) : (
+                'Show Detailed Summary'
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

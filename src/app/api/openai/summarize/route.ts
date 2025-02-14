@@ -6,10 +6,50 @@ if (!process.env.OPENAI_API_KEY) {
 
 export async function POST(request: Request) {
   try {
-    const { transcript, isDetailed } = await request.json();
+    const { transcript, isDetailed, generateTags } = await request.json();
 
     if (!transcript) {
       return NextResponse.json({ error: 'Transcript is required' }, { status: 400 });
+    }
+
+    if (generateTags) {
+      const tagResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a tag generator for video content. Generate 4-7 relevant, searchable tags that represent the main topics and themes of the video. Return them as a comma-separated list. Each tag should be a single word or compound word (no spaces). Example response format: AI, Entrepreneurship, StartupIdeas, Innovation, Technology',
+            },
+            {
+              role: 'user',
+              content: `Generate minimum 4 and maximum 7 tags for this video transcript:\n\n${transcript}`,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 100,
+        }),
+      });
+
+      const tagData = await tagResponse.json();
+      if (!tagResponse.ok) {
+        throw new Error(tagData.error?.message || 'Failed to generate tags');
+      }
+
+      const content = tagData.choices[0]?.message?.content || '';
+      return NextResponse.json({
+        tags: content
+          .split(',')
+          .map((tag: string) => tag.trim())
+          .filter((tag: string) => tag && !tag.includes(' '))
+          .map((tag: string) => tag.replace(/^#/, '')),
+      });
     }
 
     const systemPrompt = isDetailed

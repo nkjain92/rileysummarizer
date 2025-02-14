@@ -13,8 +13,17 @@ interface TranscriptSegment {
   duration: number;
 }
 
+interface SummaryWithTags {
+  title: string;
+  channelName: string;
+  date: string;
+  summary: string;
+  videoUrl: string;
+  tags: string[];
+}
+
 // Mock data for demonstration
-const mockSummaries = [
+const mockSummaries: SummaryWithTags[] = [
   {
     title: 'Video title xyz abc',
     channelName: 'channel name',
@@ -22,13 +31,51 @@ const mockSummaries = [
     summary:
       'This is where the summary will be for the latest video the user has subscribed to. It will contain key points and main takeaways from the video content.',
     videoUrl: 'https://youtube.com/watch?v=example',
+    tags: ['Technology', 'Tutorial'],
   },
 ];
 
 export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
-  const [summaries, setSummaries] = useState(mockSummaries);
+  const [summaries, setSummaries] = useState<SummaryWithTags[]>(mockSummaries);
   const [error, setError] = useState<string | null>(null);
+
+  const generateTags = (title: string, summary: string): string[] => {
+    // Extract meaningful words from title and summary
+    const text = `${title} ${summary}`.toLowerCase();
+    const words = text.split(/\s+/);
+
+    // Common words to exclude
+    const stopWords = new Set([
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'but',
+      'in',
+      'on',
+      'at',
+      'to',
+      'for',
+      'of',
+      'with',
+      'by',
+    ]);
+
+    // Get unique meaningful words
+    const uniqueWords = new Set(
+      words
+        .filter(word => word.length > 2) // Filter out short words
+        .filter(word => !stopWords.has(word)) // Filter out stop words
+        .filter(word => /^[a-z]+$/.test(word)), // Only keep words with letters
+    );
+
+    // Convert words to title case and limit to 5 most relevant tags
+    return Array.from(uniqueWords)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .slice(0, 5);
+  };
 
   const handleSubmit = async (url: string) => {
     setIsLoading(true);
@@ -82,13 +129,11 @@ export default function Home() {
       // Process the transcript data into a readable format
       let transcript;
       if (Array.isArray(transcriptData)) {
-        // If it's an array of transcript segments, join them
         transcript = (transcriptData as TranscriptSegment[])
           .map(segment => segment.text)
           .filter(Boolean)
           .join(' ');
       } else if (transcriptData.transcript && Array.isArray(transcriptData.transcript)) {
-        // If transcript is nested in a transcript property
         transcript = (transcriptData.transcript as TranscriptSegment[])
           .map(segment => segment.text)
           .filter(Boolean)
@@ -114,18 +159,32 @@ export default function Home() {
       }
       const { summary } = await summaryResponse.json();
 
+      // Get tags using OpenAI
+      const tagsResponse = await fetch('/api/openai/summarize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transcript, generateTags: true }),
+      });
+      if (!tagsResponse.ok) {
+        throw new Error('Failed to generate tags');
+      }
+      const { tags } = await tagsResponse.json();
+
       // Get video metadata from YouTube oEmbed
       const oembedResponse = await fetch(
         `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
       );
       const videoData = await oembedResponse.json();
 
-      const newSummary = {
+      const newSummary: SummaryWithTags = {
         title: videoData.title,
         channelName: videoData.author_name,
         date: new Date().toLocaleDateString(),
         summary,
         videoUrl: url,
+        tags,
       };
 
       setSummaries(prev => [newSummary, ...prev]);
