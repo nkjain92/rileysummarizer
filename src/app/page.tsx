@@ -51,25 +51,28 @@ export default function Home() {
   const [summaries, setSummaries] = useState<SummaryWithTags[]>([]);
   const [recentSummaries, setRecentSummaries] = useState<SummaryWithTags[]>([]);
   const toast = useToast();
+  const [isClient, setIsClient] = useState(false);
+
+  // Set isClient to true when component mounts
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Load recent summaries from cache
   useEffect(() => {
-    loadSummariesFromCache();
-  }, []);
-
-  const loadSummariesFromCache = () => {
+    if (!isClient) return; // Only run on client side
+    
     try {
       const cachedData = localStorage.getItem(SUMMARIES_CACHE_KEY);
       if (cachedData) {
-        const { summaries }: CacheData = JSON.parse(cachedData);
-        setSummaries(summaries);
-        // Get the last 3 summaries
-        setRecentSummaries(summaries.slice(0, 3));
+        const { summaries: cached }: CacheData = JSON.parse(cachedData);
+        setSummaries(cached);
+        setRecentSummaries(cached.slice(0, 3));
       }
     } catch (error) {
       logger.error('Failed to load cached summaries', error as Error);
     }
-  };
+  }, [isClient]); // Run when isClient becomes true
 
   const generateTags = (title: string, summary: string): string[] => {
     // Extract meaningful words from title and summary

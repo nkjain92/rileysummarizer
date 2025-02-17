@@ -30,10 +30,18 @@ export default function SummariesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isClient, setIsClient] = useState(false);
   const toast = useToast();
+
+  // Set isClient to true when component mounts
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Load cached data on initial render
   useEffect(() => {
+    if (!isClient) return;
+
     const loadCachedData = () => {
       try {
         const cachedData = localStorage.getItem(SUMMARIES_CACHE_KEY);
@@ -54,7 +62,7 @@ export default function SummariesPage() {
     if (!hasCachedData) {
       fetchSummaries(true);
     }
-  }, []);
+  }, [isClient]);
 
   const fetchSummaries = async (isInitialLoad = false) => {
     try {
@@ -109,6 +117,8 @@ export default function SummariesPage() {
   };
 
   const handleClearCache = () => {
+    if (!isClient) return;
+    
     try {
       localStorage.removeItem(SUMMARIES_CACHE_KEY);
       setSummaries([]);
@@ -189,7 +199,7 @@ export default function SummariesPage() {
                 <SummaryCard {...summary} />
               </div>
             ))
-          ) : (
+          ) : isClient && (
             <div className="text-center py-16">
               <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-xl border border-purple-100/20">
                 <h3 className="text-2xl font-semibold text-gray-800 mb-3">No summaries yet</h3>

@@ -37,7 +37,7 @@ export default function SummaryCard({
 
     setIsLoadingDetailed(true);
     try {
-      // First, try to generate the detailed summary
+      // Generate detailed summary directly from the existing summary
       const response = await fetch('/api/openai/summarize', {
         method: 'POST',
         headers: {
@@ -59,22 +59,19 @@ export default function SummaryCard({
 
       const { data } = await response.json();
       
-      // Create a new summary with the detailed summary
-      const createResponse = await fetch('/api/videos/process', {
-        method: 'POST',
+      // Update the summary in the database asynchronously
+      fetch('/api/videos/summaries/update', {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url: videoUrl,
+          videoId,
           detailed_summary: data.summary,
         }),
+      }).catch(error => {
+        logger.error('Failed to save detailed summary', error as Error);
       });
-
-      if (!createResponse.ok) {
-        const error = await createResponse.json();
-        throw new Error(error.error?.message || 'Failed to save detailed summary');
-      }
 
       setDetailedSummary(data.summary);
       setIsShowingDetailed(true);
