@@ -99,15 +99,15 @@ export class OpenAIService {
   private async generateChunkSummary(chunk: string): Promise<string> {
     const response = await retryApi(() => 
       this.client.chat.completions.create({
-        model: "gpt-3.5-turbo-0125",
+        model: "gpt-4-turbo",
         messages: [
           {
             role: "system",
-            content: "Summarize transcripts concisely, focusing on key points."
+            content: "You are an expert in synthesizing information. Create clear, informative summaries that capture the main ideas, key points, and important details. Focus on accuracy and clarity while maintaining context. Use natural language and avoid redundancy. Do not include terms like 'The summarized content is:' or 'The summary is:', etc. It has to be the best summary someone can get from the content. Depending on the nature of the content, provide the key highlights in bullet points."
           },
           {
             role: "user",
-            content: `Summarize this transcript chunk:\n\n${chunk}`
+            content: `Create a clear and informative summary of this content, highlighting the main ideas and key points:\n\n${chunk}`
           }
         ],
         temperature: 0.3,
@@ -125,11 +125,11 @@ export class OpenAIService {
         messages: [
           {
             role: "system",
-            content: "Create concise summaries that capture main points."
+            content: "You are an expert content synthesizer. Create cohesive, engaging summaries that weave together key points into a clear narrative. Focus on the most important insights while maintaining logical flow and readability. Use clear topic transitions and ensure the summary is both informative and accessible."
           },
           {
             role: "user",
-            content: `Create a final summary:\n\n${combinedSummaries}`
+            content: `Create a cohesive final summary that synthesizes these key points into a clear narrative:\n\n${combinedSummaries}`
           }
         ],
         temperature: 0.3,
@@ -148,11 +148,11 @@ export class OpenAIService {
           messages: [
             {
               role: "system",
-              content: "Generate 10 tags, 1-3 words each, under 25 chars."
+              content: "Generate relevant, concise tags for content categorization. Each tag should be 1-3 words, under 25 characters, and represent key themes or topics. Do not include numbers, hashtags, or special characters."
             },
             {
               role: "user",
-              content: `Tags for:\n\n${summary}`
+              content: `Generate 10 relevant tags for this content:\n\n${summary}`
             }
           ],
           temperature: 0.3,
@@ -164,20 +164,19 @@ export class OpenAIService {
       const tags = content
         .split('\n')
         .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .map(tag => tag.replace(/[^a-zA-Z0-9]/g, '').trim())
+        .map(tag => tag.replace(/^[0-9.)\-]+|[^a-zA-Z0-9\s]/g, '').trim()) // Remove numbers and special chars
         .filter(tag => tag.length > 1 && tag.length <= 25)
         .slice(0, 10);
 
       return tags.length === 10 ? tags : [
         ...tags,
-        ...['Tech', 'Innovation', 'Learning', 'Development', 'Business', 
-            'Strategy', 'Growth', 'Success', 'Future', 'Tips'].slice(0, 10 - tags.length)
+        ...['Technology', 'Innovation', 'Education', 'Development', 'Business', 
+            'Strategy', 'Growth', 'Success', 'Future', 'Insights'].slice(0, 10 - tags.length)
       ];
     } catch (error) {
       console.error("Error generating tags:", error);
-      return ['Tech', 'Innovation', 'Learning', 'Development', 'Business', 
-              'Strategy', 'Growth', 'Success', 'Future', 'Tips'];
+      return ['Technology', 'Innovation', 'Education', 'Development', 'Business', 
+              'Strategy', 'Growth', 'Success', 'Future', 'Insights'];
     }
   }
 

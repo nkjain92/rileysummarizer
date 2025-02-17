@@ -29,6 +29,23 @@ export default function SummaryCard({
   const [isShowingDetailed, setIsShowingDetailed] = useState(false);
   const toast = useToast();
 
+  // Function to process summary text and ensure proper bullet point formatting
+  const formatSummary = (text: string): string => {
+    // Split into lines and process each line
+    return text.split('\n').map(line => {
+      // If line starts with a dash or asterisk, convert to proper markdown bullet
+      line = line.trim();
+      if (line.startsWith('- ') || line.startsWith('* ')) {
+        return line;
+      }
+      // If line starts with a number followed by a period (e.g., "1."), convert to bullet
+      if (/^\d+\.\s/.test(line)) {
+        return `- ${line.replace(/^\d+\.\s/, '')}`;
+      }
+      return line;
+    }).join('\n');
+  };
+
   const handleGetDetailedSummary = async () => {
     if (detailedSummary) {
       setIsShowingDetailed(!isShowingDetailed);
@@ -37,7 +54,6 @@ export default function SummaryCard({
 
     setIsLoadingDetailed(true);
     try {
-      // Generate detailed summary directly from the existing summary
       const response = await fetch('/api/openai/summarize', {
         method: 'POST',
         headers: {
@@ -59,7 +75,6 @@ export default function SummaryCard({
 
       const { data } = await response.json();
       
-      // Update the summary in the database asynchronously
       fetch('/api/videos/summaries/update', {
         method: 'PUT',
         headers: {
@@ -78,17 +93,14 @@ export default function SummaryCard({
       toast.success('Detailed summary generated successfully!');
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error occurred');
-      logger.error('Failed to generate detailed summary', err, {
-        title,
-        summaryLength: summary.length,
-      });
+      logger.error('Failed to generate detailed summary', err);
       toast.error('Failed to generate detailed summary. Please try again later.');
     } finally {
       setIsLoadingDetailed(false);
     }
   };
 
-  const currentSummary = isShowingDetailed ? detailedSummary : summary;
+  const currentSummary = formatSummary(isShowingDetailed ? detailedSummary || '' : summary);
 
   return (
     <div className='bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-xl border border-purple-100/20 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1'>
@@ -129,21 +141,23 @@ export default function SummaryCard({
               transition={{ duration: 0.3 }}>
               <ReactMarkdown
                 components={{
-                  strong: ({ children }) => (
-                    <span className='font-bold text-purple-800'>{children}</span>
-                  ),
                   p: ({ children }) => (
                     <p className='text-gray-600 leading-relaxed mb-4'>{children}</p>
                   ),
-                  ul: ({ children }) => <ul className='space-y-2 my-4 list-none'>{children}</ul>,
+                  ul: ({ children }) => (
+                    <ul className='space-y-2 my-4 list-none'>{children}</ul>
+                  ),
                   li: ({ children }) => (
-                    <li className='flex items-start space-x-2'>
-                      <span className='text-purple-600 mt-1.5'>•</span>
-                      <span className='text-gray-600'>{children}</span>
+                    <li className='flex items-start space-x-2 text-gray-600'>
+                      <span className='text-purple-600 mt-1.5 min-w-[1.5rem] text-center'>•</span>
+                      <span className='flex-1'>{children}</span>
                     </li>
                   ),
+                  strong: ({ children }) => (
+                    <span className='font-semibold text-purple-800'>{children}</span>
+                  ),
                   h3: ({ children }) => (
-                    <h3 className='text-lg font-semibold text-purple-800 mt-4 mb-2'>{children}</h3>
+                    <h3 className='text-lg font-semibold text-purple-800 mt-6 mb-3'>{children}</h3>
                   ),
                 }}>
                 {currentSummary}
@@ -151,16 +165,16 @@ export default function SummaryCard({
             </motion.div>
           </AnimatePresence>
         </div>
-        <div className='flex flex-col space-y-4 mt-4'>
+        <div className='flex flex-col space-y-4 mt-6'>
           {tags.length > 0 && (
             <div className='flex flex-wrap gap-2'>
               {tags.map(tag => (
-                <button
+                <span
                   key={tag}
-                  className='px-3 py-1 text-sm rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer'
+                  className='px-3 py-1 text-sm rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors'
                 >
                   #{tag}
-                </button>
+                </span>
               ))}
             </div>
           )}
