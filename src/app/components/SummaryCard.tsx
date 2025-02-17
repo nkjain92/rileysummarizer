@@ -1,6 +1,9 @@
 import ReactMarkdown from 'react-markdown';
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { logger } from '@/lib/utils/logger';
+import { useToast } from '@/lib/contexts/ToastContext';
+import { ToastVariant } from '@/lib/types/toast';
 
 interface SummaryCardProps {
   title: string;
@@ -9,6 +12,7 @@ interface SummaryCardProps {
   summary: string;
   videoUrl: string;
   tags?: string[];
+  videoId: string;
 }
 
 export default function SummaryCard({
@@ -18,10 +22,12 @@ export default function SummaryCard({
   summary,
   videoUrl,
   tags = [],
+  videoId,
 }: SummaryCardProps) {
   const [isLoadingDetailed, setIsLoadingDetailed] = useState(false);
   const [detailedSummary, setDetailedSummary] = useState<string | null>(null);
   const [isShowingDetailed, setIsShowingDetailed] = useState(false);
+  const toast = useToast();
 
   const handleGetDetailedSummary = async () => {
     if (detailedSummary) {
@@ -31,26 +37,55 @@ export default function SummaryCard({
 
     setIsLoadingDetailed(true);
     try {
+      // First, try to generate the detailed summary
       const response = await fetch('/api/openai/summarize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          transcript: summary,
-          isDetailed: true,
+          text: summary,
+          options: {
+            format: "paragraph",
+            maxLength: 2000,
+          }
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate detailed summary');
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to generate detailed summary');
       }
 
-      const data = await response.json();
+      const { data } = await response.json();
+      
+      // Create a new summary with the detailed summary
+      const createResponse = await fetch('/api/videos/process', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: videoUrl,
+          detailed_summary: data.summary,
+        }),
+      });
+
+      if (!createResponse.ok) {
+        const error = await createResponse.json();
+        throw new Error(error.error?.message || 'Failed to save detailed summary');
+      }
+
       setDetailedSummary(data.summary);
       setIsShowingDetailed(true);
+      toast.success('Detailed summary generated successfully!');
     } catch (error) {
-      console.error('Error:', error);
+      const err = error instanceof Error ? error : new Error('Unknown error occurred');
+      logger.error('Failed to generate detailed summary', err, {
+        title,
+        summaryLength: summary.length,
+      });
+      toast.error('Failed to generate detailed summary. Please try again later.');
     } finally {
       setIsLoadingDetailed(false);
     }
@@ -125,7 +160,8 @@ export default function SummaryCard({
               {tags.map(tag => (
                 <button
                   key={tag}
-                  className='px-3 py-1 text-sm rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer'>
+                  className='px-3 py-1 text-sm rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer'
+                >
                   #{tag}
                 </button>
               ))}

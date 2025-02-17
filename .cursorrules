@@ -1,17 +1,24 @@
 You are an expert in TypeScript, Next.js App Router, React, and Tailwind. Follow @Next.js 14 App Router docs for Data Fetching, Rendering, and Routing. Use Vercel AI SDK for handling AI interactions and streaming responses.
 
-- All project files are saved in the /src folder. 
-  - src/app has the page.tsx and layout.tsx files
-  - src/app/api has the API routes
-  - src/app/components has all the React components
-  - src/app/lib has all the other code like helpers, hooks, and contexts
+- All project files are saved in the /src folder with the following structure:
+  - src/app/ # Next.js App Router pages and API routes
+    - api/ # API route handlers
+    - summaries/ # Summaries page
+    - components/ # Page-specific components
+    - layout.tsx # Root layout
+    - page.tsx # Home page
+    - globals.css # Global styles
+  - src/components/ # Shared components
+    - ui/ # UI components
+  - src/lib/ # Core libraries and utilities
+    - contexts/ # React contexts
+    - services/ # Service layer
+    - types/ # TypeScript types and interfaces
+    - utils/ # Utility functions
 
 There are some pre-configured APIs in this template that can be used but only if required by the current project. These have already been created:
-- Firebase
-  - In src/lib/firebase there is a firebase.ts configuration file as well as firebaseUtils.ts for various utility functions when interacting with Firebase Database, Storage, and Authencation
-  - In src/lib/contexts there is an AuthContext.tsx file that has user authentication with Firebase set up with the onAuthStateChanged listener.
-  - In src/lib/hooks there is a useAuth.ts hook
-- OpenAI 
+
+- OpenAI
   - src/app/api/openai has chat/route.ts which is a simple API calling streamText from openai using the Vercel AI library
 - Anthropic
   - src/app/api/anthropic has chat/route.ts which is a simple API calling streamText from Anthropic using the Vercel AI library
@@ -20,3 +27,100 @@ There are some pre-configured APIs in this template that can be used but only if
 - Deepgram
   - src/app/api/deepgram has transcribe-audio/route.ts which is a simple API that returns the Deepgram API key to be used in the client side to transcribe audio in real-time.
   - src/lib/contexts has a DeepgramContext.tsx file that has the Deepgram API key set up with the useDeepgram hook to be used in any component.
+
+# Instructions
+
+During you interaction with the user, if you find anything reusable in this project (e.g. version of a library, model name), especially about a fix to a mistake you made or a correction you received, you should take note in the `Lessons` section in the `.cursorrules` file so you will not make the same mistake again.
+
+You should also use the `.cursorrules` file as a scratchpad to organize your thoughts. Especially when you receive a new task, you should first review the content of the scratchpad, clear old different task if necessary, first explain the task, and plan the steps you need to take to complete the task. You can use todo markers to indicate the progress, e.g.
+[X] Task 1
+[ ] Task 2
+
+Also update the progress of the task in the Scratchpad when you finish a subtask.
+Especially when you finished a milestone, it will help to improve your depth of task accomplishment to use the scratchpad to reflect and plan.
+The goal is to help you maintain a big picture as well as the progress of the task. Always refer to the Scratchpad when you plan the next step.
+
+# Project Rules
+
+# Lessons
+
+1. When using OpenAI SDK, use the SDK types directly instead of creating custom types
+2. For retry mechanisms, create specialized retry functions for different API calls
+3. Keep error handling consistent across the codebase
+4. Import types directly from the SDK instead of creating custom type definitions
+5. Remove custom type definitions when SDK provides equivalent types
+6. Use proper JSDoc comments for better code documentation
+7. Remove old standalone functions when their functionality has been moved into a class
+8. Update API routes when refactoring service functions to use new implementations
+9. Ensure request/response formats match the validation schemas in API routes
+10. Use proper error handling and loading states in UI components
+11. Use database types to ensure type safety in database operations
+12. Follow minimal implementation first, then add features incrementally
+13. Keep implementations as simple as possible, following official patterns
+14. Avoid mixing concerns in service and API handlers
+15. Remove unnecessary complexity and error handling until core functionality works
+16. Start with official documentation examples before adding custom logic
+17. Keep service methods focused on single responsibilities
+18. Use proper error types for service-related errors
+19. Make types strict by using required properties instead of optional ones
+20. Extract common functionality into utility functions to avoid duplication
+21. Use context-based state management for global UI features like toast notifications
+22. Remove prop-based implementations when migrating to context-based systems
+23. Keep UI components consistent by using shared context providers
+24. Implement proper cleanup in context-based systems to prevent memory leaks
+25. Use type-safe hooks for accessing context values
+26. Use in-memory storage for rapid prototyping before adding persistence
+27. Keep data structures consistent between in-memory and persistent storage
+28. Use anonymous IDs for unauthenticated operations to simplify development
+
+# Scratchpad
+
+## Task: Remove Authentication and Switch to In-Memory Storage
+
+### Current Progress:
+
+[X] 1. Removed auth-related directories and files
+
+- Removed src/app/auth/
+- Removed src/app/login/
+- Removed src/lib/auth/
+- Removed src/components/auth/
+- Removed src/middleware.ts
+- Removed scripts/create-test-users.ts
+
+[X] 2. Removed auth-related code from
+
+- src/app/layout.tsx (removed AuthProvider)
+- src/app/page.tsx (removed auth-related code)
+- .env.local (removed Supabase env vars)
+- src/lib/services/DatabaseService.ts (replaced Supabase with in-memory storage)
+- src/lib/services/VideoProcessingService.ts (removed Supabase and auth)
+- src/app/api/videos/process/route.ts (removed auth)
+- src/app/api/videos/summaries/route.ts (removed auth)
+- src/app/api/videos/summaries/update/route.ts (removed auth)
+- src/app/api/videos/refresh/route.ts (removed auth)
+
+[X] 3. Updated types
+
+- src/lib/types/database.ts (updated types to include relationships)
+
+[X] 4. Replaced auth with anonymous user
+
+- All user IDs are now set to 'anonymous'
+- All channel IDs are now set to 'anonymous'
+- Removed session checks and auth middleware
+
+[X] 5. Implemented in-memory storage
+
+- Added store object in DatabaseService
+- Implemented CRUD operations for all data types
+- Maintained type safety and relationships
+- Added proper error handling
+
+### Next Steps:
+
+1. Add tests for in-memory storage
+2. Add data persistence mechanism
+3. Add proper documentation
+4. Add error recovery strategies
+5. Consider implementing caching layer
