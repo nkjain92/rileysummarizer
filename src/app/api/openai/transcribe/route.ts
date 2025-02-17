@@ -1,38 +1,47 @@
-import { NextResponse } from "next/server";
-import fs from "fs";
-import OpenAI from "openai";
+import { NextRequest, NextResponse } from "next/server";
+import { OpenAIService } from "@/lib/services/openai";
+import { AppError, ErrorCode, HttpStatus } from "@/lib/types/errors";
+import { logger } from "@/lib/utils/logger";
 
-const openai = new OpenAI();
-
-export async function POST(req: Request) {
-  const body = await req.json();
-
-  const base64Audio = body.audio;
-
-  // Convert the base64 audio data to a Buffer
-  const audio = Buffer.from(base64Audio, "base64");
-
-  // Define the file path for storing the temporary WAV file
-  const filePath = "tmp/input.wav";
-
+/**
+ * Transcribe audio using OpenAI Whisper
+ * POST /api/openai/transcribe
+ */
+export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    // Write the audio data to a temporary WAV file synchronously
-    fs.writeFileSync(filePath, audio);
+    const formData = await req.formData();
+    const file = formData.get("file") as File;
 
-    // Create a readable stream from the temporary WAV file
-    const readStream = fs.createReadStream(filePath);
+    if (!file) {
+      throw new AppError(
+        "No file provided",
+        ErrorCode.VALIDATION_INVALID_FORMAT,
+        HttpStatus.BAD_REQUEST
+      );
+    }
 
-    const data = await openai.audio.transcriptions.create({
-      file: readStream,
-      model: "whisper-1",
-    });
+    const service = new OpenAIService();
+    const transcript = await service.transcribeAudio(file);
 
-    // Remove the temporary file after successful processing
-    fs.unlinkSync(filePath);
-
-    return NextResponse.json(data);
+    return NextResponse.json({ data: transcript });
   } catch (error) {
-    console.error("Error processing audio:", error);
-    return NextResponse.error();
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        { error: error.toResponse() },
+        { status: error.statusCode }
+      );
+    }
+
+    const appError = new AppError(
+      "Failed to transcribe audio",
+      ErrorCode.API_SERVICE_UNAVAILABLE,
+      HttpStatus.INTERNAL_ERROR,
+      { error }
+    );
+
+    return NextResponse.json(
+      { error: appError.toResponse() },
+      { status: appError.statusCode }
+    );
   }
 }
