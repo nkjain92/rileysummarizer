@@ -213,24 +213,49 @@ supabase db push
 
 ## Step 3: Update DatabaseService.ts to Use Supabase
 
-### Tasks
+Since we now have a Supabase project set up (and a migration file for the current schema), we need to replace any remaining in-memory logic with Supabase queries in our service layer. At this point, the primary features that have been built are:
 
-1. For every method (e.g., `getProfile`, `upsertChannel`, `createVideo`, `updateVideo`, `getUserSummaries`, etc.), remove the in-memory logic and write Supabase queries
-2. Ensure Consistent Error Handling:
-   - Wrap every Supabase call in try/catch
-   - Log errors using the logger
-   - Re-throw errors as AppError (using ErrorCode and HttpStatus)
+- Generating summaries (via OpenAI)
+- Tag management (finding/creating tags)
+- Viewing past summaries (user summaries)
 
-Example:
+> **Note:** If a method already uses Supabase (for example, if it's already querying the database for tags or summaries), no changes are needed. For any method that still uses an in-memory store (or if you find old code that is no longer relevant), update or remove it.
+
+### 3.1 – Verify the Supabase Client Is Set Up
+
+1. **Confirm that you have a dedicated client file:**
+
+   - **File:** `src/lib/utils/supabaseClient.ts`
+   - **Code:**
+
+     ```typescript
+     import { createClient } from '@supabase/supabase-js';
+
+     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+     export const supabase = createClient(supabaseUrl, supabaseKey);
+     ```
+
+2. **Ensure that any file needing to interact with the database imports this client** (do not create a new instance of the client in each file).
+
+### 3.2 – Update Each Database Method
+
+Review the methods in `DatabaseService.ts` and ensure that they use Supabase queries with proper error handling. For example, update methods that previously used in-memory logic (if any) to use Supabase.
+
+#### Example: Updating `findChannelById`
+
+1. **Open File:** `src/lib/services/DatabaseService.ts`
+2. **Locate the method** `findChannelById`. Replace its contents (or verify that it looks like the example below):
 
 ```typescript
 async findChannelById(id: string): Promise<ChannelRecord | null> {
   try {
+    // Query the "channels" table for the record with the given ID.
     const { data, error } = await supabase
       .from('channels')
       .select('*')
       .eq('id', id)
-      .maybeSingle();
+      .maybeSingle(); // Expect either one record or null.
 
     if (error) {
       logger.error("Supabase error in findChannelById:", error, { channelId: id });
@@ -240,7 +265,6 @@ async findChannelById(id: string): Promise<ChannelRecord | null> {
         HttpStatus.NOT_FOUND
       );
     }
-
     return data;
   } catch (err) {
     if (err instanceof AppError) throw err;
@@ -254,19 +278,135 @@ async findChannelById(id: string): Promise<ChannelRecord | null> {
 }
 ```
 
-### Testing
+### Key Points:
 
-- Write temporary test functions for each method (e.g., call `upsertChannel`, then `findChannelById`, etc.) and check the Supabase dashboard for updates
+- Use `.select('*')` and filter with `.eq('id', id)`
+- Use `.maybeSingle()` to get either one result or null
+- Wrap the query in a try/catch block
+- Log any errors using the provided logger
+- Re-throw errors as an AppError with the appropriate ErrorCode and HttpStatus
 
-## Step 4: Remove In-Memory Store Code
+### Other Methods to Check or Update
 
-### Tasks
+Review and update the following methods (if needed):
 
-- Delete any in-memory store code and unused files once all DatabaseService methods work reliably with Supabase
+1. **Profiles:**
 
-### Testing
+   - `getProfile(userId: string)`
+   - `upsertProfile(profile: …)`
 
-- Run the application and verify that all database operations succeed
+2. **Videos:**
+
+   - `findVideoById(id: string)`
+   - `createVideo(video: …)`
+   - `updateVideo(id: string, video: Partial<VideoRecord>)`
+
+3. **User Summaries:**
+
+   - `getUserSummaries(userId: string)`
+   - `createUserSummary(summary: …)`
+   - `updateUserSummary(id: string, summary: Partial<UserSummaryRecord>)`
+   - `findSummaryByVideoId(videoId: string, userId: string)`
+
+4. **Tags and Content Tags:**
+
+   - `findOrCreateTag(name: string)`
+   - `addContentTag(contentTag: ContentTagRecord)`
+   - `getContentTags(contentId: string)`
+
+5. **Subscriptions:**
+   - `getSubscriptions(userId: string)`
+   - `addSubscription(subscription: …)`
+   - `removeSubscription(userId: string, subscriptionId: string)`
+
+For each method, ensure that you:
+
+- Remove any in-memory fallback or outdated logic
+- Use the imported supabase client for all queries
+- Wrap the call in a try/catch block as shown above
+- Log errors using the provided logger
+- Re-throw errors as an AppError with the correct ErrorCode and HttpStatus
+
+### 3.3 – Testing Your Changes
+
+Before moving on, create a temporary test function (or use your favorite testing framework) to call each updated method and verify the following:
+
+- Expected Data is Returned: Check the Supabase dashboard to confirm that records are correctly created, updated, or retrieved
+- Errors are Handled Correctly: You can simulate an error by providing an invalid ID, for example
+
+#### Example Temporary Test Function
+
+```typescript
+// Add this temporarily at the bottom of DatabaseService.ts (or in a separate test file)
+async function testDatabaseService() {
+  const db = new DatabaseService('Test');
+
+  // Test upserting a channel
+  const testChannel = {
+    id: 'test-channel',
+    name: 'Test Channel',
+    url: 'https://example.com/test-channel',
+    subscriber_count: 0,
+  };
+  const upsertedChannel = await db.upsertChannel(testChannel);
+  console.log('Upserted Channel:', upsertedChannel);
+
+  // Test fetching a channel
+  const foundChannel = await db.findChannelById('test-channel');
+  console.log('Found Channel:', foundChannel);
+
+  // Test getting user summaries
+  const summaries = await db.getUserSummaries('anonymous');
+  console.log('User Summaries:', summaries);
+}
+
+testDatabaseService().catch(console.error);
+```
+
+Once you confirm that each method works as expected:
+
+- Remove the temporary test code
+- Commit your changes with a commit message like:
+  "Step 3: Update DatabaseService to use Supabase queries and remove in-memory logic"
+
+## Step 4: Remove In-Memory Store Code and Unused Files
+
+After verifying that all database operations now work reliably with Supabase, search the codebase for any remnants of the in-memory storage logic. This might include:
+
+### 4.1 – In-Memory Store Files
+
+- **Identify Files:**
+  - Check files such as `src/lib/types/storage.ts` that define an in-memory transcriptStore or similar functions (e.g., storeTranscript, getTranscript, deleteTranscript, transcriptExists)
+- **Action:**
+  - Delete or refactor these functions so that only the Supabase-based implementations remain
+  - For example, if a function is now replaced by a Supabase call in `src/lib/utils/storage.ts`, remove the old in-memory version
+
+### 4.2 – Old Service Files
+
+- Identify any unused files that pertain solely to the in-memory store
+- **Action:**
+  - Remove these files if they are no longer referenced anywhere in the project
+
+### 4.3 – Cleanup References
+
+- **Search the Codebase:**
+  - Ensure that all references to the in-memory store (or related tests) are removed
+- **Testing:**
+  - Run the application and verify that there are no errors related to missing in-memory modules
+
+### 4.4 – Final End-to-End Testing
+
+- **Run the Application End-to-End:**
+  - Confirm that all database operations (creating profiles, channels, videos, summaries, etc.) work correctly using Supabase
+- **Check the Supabase Dashboard:**
+  - Verify that data is being properly written and read from the database
+
+By following these detailed steps, you ensure that:
+
+1. All relevant database operations in DatabaseService.ts are updated to use Supabase
+2. Any outdated or in-memory fallback code is removed
+3. Each method is thoroughly tested
+4. The codebase is cleaned up for a maintainable and robust implementation
 
 # Phase 2: Feature-by-Feature Implementation
 
