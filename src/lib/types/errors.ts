@@ -7,6 +7,9 @@ export enum ErrorCode {
   API_RATE_LIMIT = "api/rate-limit",
   API_INVALID_RESPONSE = "api/invalid-response",
 
+  // Database Errors
+  DATABASE_ERROR = "database/error",
+
   // Validation Errors
   VALIDATION_INVALID_FORMAT = "validation/invalid-format",
   VALIDATION_REQUIRED_FIELD = "validation/required-field",
@@ -122,4 +125,4 @@ export function createStorageError(
   details?: Record<string, unknown>
 ): AppError {
   return new AppError(message, code, statusCode, details);
-} 
+}
