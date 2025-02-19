@@ -1,184 +1,179 @@
 ## Technical Documentation and Implementation Plan
 
-Current Project State
-This is a Next.js application for YouTube video summarization using AI services. The core functionality allows users to input YouTube URLs, process videos through multiple AI services (OpenAI, Anthropic, Deepgram), and generate summaries with tags. The application uses Supabase for authentication and storage, with real-time voice transcription capabilities.
+### Current Project State
 
-The application uses a modern tech stack including Next.js 13+, TypeScript, Tailwind CSS for styling, and multiple AI service integrations. The frontend is built with React components following a modular architecture, with separate contexts for authentication and Deepgram integration.
+RileySummarizer is a Next.js 13+ application that enables users to obtain AI-generated summaries of YouTube videos. The current implementation leverages OpenAI’s models for multiple tasks:
 
-Authentication is implemented through Supabase, using their latest SSR package (@supabase/ssr) for server-side and client-side auth handling. The app stores user data, summaries, and transcriptions in Supabase, with additional storage capabilities through Supabase Storage.
+- **Chat Completion and Summarization:** Using GPT‑3.5 Turbo and GPT‑4 (via separate routes) to generate both brief and detailed summaries.
+- **Audio Transcription:** Using OpenAI Whisper to transcribe audio files.
+- **YouTube Transcript Retrieval:** Fetching transcripts from YouTube via an external RapidAPI endpoint.
 
-API routes are implemented for various services:
+Instead of integrating multiple AI providers (such as Anthropic, Deepgram, or Replicate), the application currently focuses on OpenAI services. For storage and database operations, Supabase is used for transcript storage and (in some cases) for record keeping; however, several database operations (videos, summaries, channels) are also simulated via an in‑memory store inside the DatabaseService. For user identity, the application presently uses a default “anonymous” user, with room to later integrate a full Supabase authentication solution.
 
-YouTube transcript fetching
+The app employs modern standards with TypeScript, Tailwind CSS for styling, and a clear separation between user interface components, API routes, and business logic.
 
-OpenAI summarization and chat
-
-Anthropic Claude integration
-
-Deepgram voice transcription
-
-Replicate image generation
-
-The application includes real-time voice recording and transcription through Deepgram, with the ability to save transcriptions to Supabase. Image upload functionality is implemented with both local preview and Supabase Storage integration.
+---
 
 ### Codebase Summary
 
-This is a Next.js application that serves as a YouTube video summarizer using AI services (OpenAI, Anthropic, Deepgram) and authentication (Supabase). The application allows users to input YouTube URLs, generate summaries, and manage their content.
+RileySummarizer is a modular Next.js application built around AI‑powered YouTube video summarization. Key features include:
+
+- **AI Services:** All AI interactions (chat completions, text summarization, and audio transcription) are handled using OpenAI’s APIs.
+- **Video Processing:** A dedicated service processes a YouTube URL by retrieving (or generating) its transcript, splitting it into meaningful chunks, generating summaries (including detailed versions on demand), and extracting tags.
+- **Storage and Database:** Transcripts are stored in Supabase Storage (using a consistent path structure) while video metadata and user summaries are managed via a DatabaseService that currently employs an in‑memory store.
+- **User Experience:** The frontend—built with React and styled using Tailwind CSS—includes components such as LinkInput for URL submission, SummaryCard for displaying video summaries, navigation and loading indicators, and a toast notification system.
+
+---
 
 ### Technical Architecture
 
 #### Core Technologies
 
-- Frontend: Next.js (React), TypeScript
-- Authentication: Supabase Auth
-- Database: Supabase
-- AI Services: OpenAI, Anthropic Claude, Deepgram
-- Storage: Supabase Storage
-- Styling: Tailwind CSS
+- **Frontend:** Next.js (App Router), React, TypeScript
+- **Styling:** Tailwind CSS
+- **AI Services:** OpenAI (for chat completions, summarization, and transcription via Whisper)
+- **Storage & Database:** Supabase Storage for transcripts and Supabase (or an in‑memory store) for video, channel, and summary records
+- **Utilities & Enhancements:** Custom logger, retry utilities, loading state contexts, and toast notification contexts
 
 #### Folder Structure
+
+A high‑level overview of the project structure (under the `rileysummarizer/` root):
 
 ```
 rileysummarizer/
 ├── src/
-    ├── app/                    # Next.js App Router pages and API routes
-    │   ├── api/               # API route handlers
-    │   ├── auth/              # Authentication-related pages
-    │   ├── login/             # Login page
-    │   ├── summaries/         # Summaries page
-    │   ├── components/        # Page-specific components
-    │   ├── layout.tsx         # Root layout
-    │   ├── page.tsx           # Home page
-    │   └── globals.css        # Global styles
-    ├── components/            # Shared components
-    │   ├── auth/             # Authentication components
-    │   ├── ui/               # UI components
-    │   └── VoiceRecorder.tsx # Voice recording component
-    ├── lib/                   # Core libraries and utilities
-    │   ├── auth/             # Authentication utilities
-    │   ├── contexts/         # React contexts
-    │   ├── middleware/       # Custom middleware
-    │   ├── services/         # Service layer
-    │   ├── supabase/         # Supabase client and utilities
-    │   ├── types/            # TypeScript types and interfaces
-    │   └── utils/            # Utility functions
-    └── middleware.ts          # Next.js middleware
+│   ├── app/                    # Next.js App Router pages and API routes
+│   │   ├── api/               # API route handlers for OpenAI, videos, YouTube, etc.
+│   │   │   ├── openai/        # OpenAI integrations:
+│   │   │   │   ├── chat         (chat completion)
+│   │   │   │   ├── summarize    (detail-rich summarization)
+│   │   │   │   └── transcribe   (audio transcription using Whisper)
+│   │   │   ├── videos/        # Video processing & summary management
+│   │   │   │   ├── process      (process YouTube URLs)
+│   │   │   │   ├── refresh      (update transcripts and summaries)
+│   │   │   │   └── summaries/   (get and update user summaries)
+│   │   │   └── youtube/       # YouTube transcript fetching (via RapidAPI)
+│   │   ├── components/        # Page-specific components (if any)
+│   │   ├── layout.tsx         # Global and root layout definitions
+│   │   ├── globals.css        # Global styling rules
+│   │   └── page.tsx           # Home page (e.g. URL submission and recent summaries)
+│   ├── components/            # Shared UI components
+│   │   ├── LinkInput.tsx      # Component for YouTube URL input with inline validation
+│   │   ├── LoadingCard.tsx    # Visual loading skeleton during data fetching
+│   │   ├── Navigation.tsx     # Application navigation bar
+│   │   └── SummaryCard.tsx    # Displays a video’s summary, tags, and details
+│   ├── lib/                   # Core libraries and utilities
+│   │   ├── contexts/          # React context providers (e.g. ToastContext, LoadingContext)
+│   │   ├── services/          # Business logic (DatabaseService, OpenAIService, VideoProcessingService)
+│   │   ├── types/             # TypeScript interfaces and type definitions (e.g. for errors, database, loading, storage, toast)
+│   │   └── utils/             # Utility functions (e.g. logger, retry, storage, youtube helpers)
+│   └── supabase/              # Supabase project configurations and migration files
 ```
 
-### File Organization
+#### File Organization and Purposes
 
-1. **App Directory (`src/app/`)**
+1. **App Directory (`src/app/`):**
 
-   - Pages using the App Router
-   - API routes
-   - Page-specific components
-   - Layouts and templates
+   - Contains Next.js pages, API routes, layouts, and global styles.
 
-2. **Components Directory (`src/components/`)**
+2. **Components Directory (`src/components/`):**
 
-   - Shared components used across multiple pages
-   - UI components (buttons, forms, etc.)
-   - Authentication components
-   - Feature-specific components
+   - Holds reusable UI components like the URL input (LinkInput), summary display (SummaryCard), loading indicator (LoadingCard), and navigation bar.
+   - Also includes UI-specific components for toasts and loading animations (found under `components/ui/`).
 
-3. **Library Directory (`src/lib/`)**
+3. **Library Directory (`src/lib/`):**
 
-   - Core business logic
-   - Services and utilities
-   - Type definitions
-   - Context providers
-   - Authentication utilities
-   - Database utilities
+   - Implements core business logic:
+     - **Services:**  
+       • `OpenAIService` – Provides chat completions, detailed summarization, and audio transcription (using OpenAI Whisper).  
+       • `DatabaseService` – Simulates database operations (videos, channels, and summaries) using an in‑memory store.  
+       • `VideoProcessingService` – Coordinates transcript fetching, summary generation, and database updates.
+     - **Utilities:** Logger, retry mechanisms, request validation, and error formatting.
+     - **Contexts:** Toast and loading contexts for centralized UI state management.
+     - **Types:** Type definitions for errors, database records, loading states, storage, and toast notifications.
 
-4. **Middleware**
-   - Root middleware for request handling
-   - Custom middleware implementations
+4. **Supabase Directory (`src/supabase/`):**
+   - Contains Supabase-related configuration files (such as migrations) and serves as the integration point for Supabase Storage.
 
-This structure follows Next.js 14 App Router conventions while maintaining a clean separation of concerns:
+---
 
-- **Pages**: Contained within the `app` directory
-- **Components**: Split between shared (`components/`) and page-specific (`app/components/`)
-- **Business Logic**: Organized in the `lib` directory
-- **API Routes**: Centralized in `app/api`
+### API Routes
 
-### File Purposes
+The application exposes several API endpoints:
 
-#### API Routes
+- **/api/openai/chat:**  
+  Handles chat completion requests. Validates a messages array and delegates the request to OpenAIService.
 
-- `api/anthropic/chat/` - Handles Claude AI chat integration
-- `api/deepgram/` - Manages Deepgram API key access
-- `api/openai/` - Contains OpenAI service integrations:
-  - `chat/` - Chat completions
-  - `summarize/` - Text summarization
-  - `transcribe/` - Audio transcription
-- `api/replicate/` - Handles image generation
-- `api/youtube/` - YouTube transcript fetching
+- **/api/openai/summarize:**  
+  Processes a text input to generate a detailed summary (optionally with bullet points) using OpenAI. Validation is done via Zod, and detailed logging is used throughout the process.
 
-#### Components
+- **/api/openai/transcribe:**  
+  Accepts a file upload (audio) and uses OpenAI’s Whisper to return a transcript.
 
-1. Core Components:
+- **/api/videos/process:**  
+  Takes a YouTube URL, validates it, and uses OpenAIService to process the video. It retrieves (or generates) a transcript (including via an external YouTube transcript API), creates or updates DB records, and ultimately generates a summary and tags.
 
-- `LinkInput.tsx` - YouTube URL input handler
-- `LoadingCard.tsx` - Loading state display
-- `Navigation.tsx` - App navigation
-- `SummaryCard.tsx` - Video summary display
-- `Toast.tsx` - Notification system
-- `VoiceRecorder.tsx` - Audio recording interface
+- **/api/videos/refresh:**  
+  Refreshes a video’s transcript and summary by reprocessing the YouTube video and updating storage and database entries.
 
-2. Authentication Components:
+- **/api/videos/summaries/update:**  
+  Updates the detailed summary stored for a given video.
 
-- `SignInWithGoogle.tsx` - Google authentication
+- **/api/videos/summaries (GET):**  
+  Retrieves all summaries associated with the default “anonymous” user (intended for future authenticated use).
 
-#### Context and Hooks
+- **/api/youtube/transcript:**  
+  Fetches YouTube transcripts using the RapidAPI endpoint. It handles errors (e.g. when a transcript is not available) and returns the combined transcript text.
 
-- `AuthContext.tsx` - Authentication state management
-- `DeepgramContext.tsx` - Voice transcription state
-- `useAuth.ts` - Authentication hook
+All API responses conform to a consistent format with a top‑level “data” field on success or an “error” object describing the problem.
+
+---
+
+### UI Components
+
+Key UI components include:
+
+- **LinkInput.tsx:** Validates and accepts YouTube links for summarization.
+- **LoadingCard.tsx:** Displays a placeholder skeleton while data loads.
+- **Navigation.tsx:** Provides navigation between the home page and past summaries.
+- **SummaryCard.tsx:** Formats and displays video summaries along with detailed views, tags, and a “Show Detailed Summary” button.
+- **Toast Components:** Provide animated, position‑aware notifications using Framer Motion.
+
+---
+
+### Context and Hooks
+
+Two central context providers manage shared application state:
+
+- **LoadingContext:**  
+  Provides mechanisms to trigger global or operation‑specific loading states. Components like the Loading UI (and overlays) use this context to display progress and messages.
+
+- **ToastContext:**  
+  Manages toast notifications for success, error, warning, and informational messages. Components and API responses use this context to show realtime feedback to the user.
+
+_(Note: Although earlier iterations included authentication and voice recording contexts, the current codebase primarily uses an “anonymous” user placeholder.)_
+
+---
 
 ### Dependencies
 
-```json
-{
-  "major": {
-    "@deepgram/sdk": "latest",
-    "@firebase/auth": "latest",
-    "@supabase/supabase-js": "latest",
-    "next": "latest",
-    "react": "latest",
-    "tailwindcss": "latest",
-    "typescript": "latest"
-  }
-}
-```
+Some major dependencies in the project include:
+
+- Next.js (latest version)
+- React and React DOM
+- TypeScript
+- Tailwind CSS
+- OpenAI (for both chat completions and audio transcription)
+- Supabase (for Storage and potential authentication)
+- Framer Motion (for animated UI elements)
+- Zod (for request validation)
+- Additional utilities for logging and retries
+
+---
 
 ### Interface Details
 
-1. Authentication Interfaces:
-
-```typescript
-interface AuthContextType {
-  user: User | null;
-  isLoading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signOut: () => Promise<void>;
-  error: AuthError | null;
-}
-```
-
-2. Storage Interfaces:
-
-```typescript
-interface UploadResult {
-  path: string;
-  url: string;
-}
-
-class StorageError extends Error {
-  statusCode?: number;
-}
-```
-
-3. Summary Interfaces:
+#### Summary Interfaces
 
 ```typescript
 interface SummaryWithTags {
@@ -188,14 +183,13 @@ interface SummaryWithTags {
   summary: string;
   videoUrl: string;
   tags: string[];
+  videoId: string;
 }
 ```
 
-### Error Handling
+#### Error Interfaces
 
-The application implements a comprehensive error handling system with the following components:
-
-1. **Error Types and Interfaces**
+Every error in the application is represented by an AppError with a consistent interface:
 
 ```typescript
 interface BaseError {
@@ -206,14 +200,10 @@ interface BaseError {
 }
 
 enum ErrorCode {
-  // Authentication Errors
-  AUTH_INVALID_CREDENTIALS = "auth/invalid-credentials",
-  // Storage Errors
-  STORAGE_FILE_NOT_FOUND = "storage/file-not-found",
-  // API Errors
-  API_RATE_LIMIT = "api/rate-limit",
-  // Validation Errors
   VALIDATION_INVALID_FORMAT = "validation/invalid-format",
+  STORAGE_FILE_NOT_FOUND = "storage/file-not-found",
+  API_SERVICE_UNAVAILABLE = "api/service-unavailable",
+  // … other error codes
 }
 
 class AppError extends Error implements BaseError {
@@ -223,667 +213,192 @@ class AppError extends Error implements BaseError {
 }
 ```
 
-2. **API Error Handling**
+---
 
-- Centralized error handling middleware for API routes
-- Consistent error response format
-- Built-in support for validation and authentication
-- Special handling for Supabase errors
+### Error Handling
 
-3. **Error Utilities**
+- **Centralized Error Handling:**  
+  All API routes wrap operations in try–catch blocks. Validated errors (using Zod) result in an AppError, and unexpected errors are wrapped before sending a response.
 
-```typescript
-// Create specific error types
-createValidationError(message, details);
-createAuthError(message, code, details);
-createApiError(message, code, statusCode, details);
+- **Consistent API Response Format:**  
+  Success responses include a "data" field; error responses include an "error" object with message, code, and optional details.
 
-// Middleware functions
-withErrorHandler(handler); // Wraps API routes with error handling
-validateRequest(request, schema); // Validates request data
-requireAuth(request); // Ensures valid authentication
-```
-
-4. **Storage Error Handling**
-
-- Standardized error handling for Supabase storage operations
-- Consistent error codes and status codes
-- Detailed error messages with proper HTTP status codes
-
-### API Response Format
-
-All API responses follow a consistent format:
-
-1. **Success Response**
-
-```json
-{
-  "data": {
-    // Response data
-  }
-}
-```
-
-2. **Error Response**
-
-```json
-{
-  "error": {
-    "message": "Error description",
-    "code": "error/code",
-    "details": {
-      // Optional error details
-    }
-  }
-}
-```
-
-### Configuration Details
-
-Required Environment Variables:
-
-````
+---
 
 ### Loading State Management
 
-The application implements a centralized loading state management system with the following components:
+Loading is managed centrally via the LoadingContext:
 
-1. **Loading Types and Interfaces**
-```typescript
-enum LoadingType {
-  // Authentication
-  AUTH_SIGN_IN = "auth/sign-in",
-  // Data Operations
-  DATA_FETCH = "data/fetch",
-  // File Operations
-  FILE_UPLOAD = "file/upload",
-  // API Operations
-  API_REQUEST = "api/request",
-  // AI Operations
-  AI_PROCESSING = "ai/processing"
-}
+- **Types & Interfaces:**
 
-interface LoadingState {
-  type: LoadingType;
-  message?: string;
-  progress?: number;
-  startTime: number;
-}
-````
+  ```typescript
+  enum LoadingType {
+    DATA_FETCH = "data/fetch",
+    FILE_UPLOAD = "file/upload",
+    API_REQUEST = "api/request",
+    AI_PROCESSING = "ai/processing",
+    VIDEO_PROCESSING = "video/processing",
+  }
 
-2. **Loading Context**
+  interface LoadingState {
+    type: LoadingType;
+    message?: string;
+    progress?: number;
+    startTime: number;
+  }
+  ```
 
-- Centralized state management for loading states
-- Support for multiple concurrent loading operations
-- Progress tracking and message updates
-- Type-safe loading operations
+- **Usage:**  
+  Hooks (via `useLoading()`) expose methods to start, update, and stop loading operations, which UI components then use to display spinners or progress bars.
 
-3. **Loading Components**
-
-```typescript
-// Basic loading component
-<Loading type={LoadingType.DATA_FETCH} />
-
-// Loading overlay with backdrop
-<LoadingOverlay type={LoadingType.AI_PROCESSING} />
-
-// Progress tracking
-<Loading
-  type={LoadingType.FILE_UPLOAD}
-  message="Uploading file..."
-  progress={75}
-/>
-```
-
-4. **Loading Hook**
-
-```typescript
-const {
-  isLoading,
-  startLoading,
-  updateLoading,
-  stopLoading,
-  isOperationLoading,
-  getLoadingState,
-} = useLoading();
-```
+---
 
 ### Toast Notification System
 
-The application implements a flexible toast notification system with the following components:
+The toast notification system uses context to display non‑blocking messages:
 
-1. **Toast Types and Interfaces**
+- **Toast Types and Interfaces:**
 
-```typescript
-enum ToastVariant {
-  SUCCESS = "success",
-  ERROR = "error",
-  WARNING = "warning",
-  INFO = "info",
-}
+  ```typescript
+  enum ToastVariant {
+    SUCCESS = "success",
+    ERROR = "error",
+    WARNING = "warning",
+    INFO = "info",
+  }
 
-enum ToastPosition {
-  TOP = "top",
-  TOP_RIGHT = "top-right",
-  TOP_LEFT = "top-left",
-  BOTTOM = "bottom",
-  BOTTOM_RIGHT = "bottom-right",
-  BOTTOM_LEFT = "bottom-left",
-}
+  enum ToastPosition {
+    TOP_RIGHT = "top-right",
+    // other positions…
+  }
 
-interface Toast {
-  id: string;
-  message: string;
-  variant: ToastVariant;
-  title?: string;
-  duration?: number;
-  position?: ToastPosition;
-  isClosable?: boolean;
-}
-```
+  interface Toast {
+    id: string;
+    message: string;
+    variant: ToastVariant;
+    title?: string;
+    duration?: number;
+    position?: ToastPosition;
+    isClosable?: boolean;
+  }
+  ```
 
-2. **Toast Context**
+- **Usage:**  
+  Using the `useToast()` hook, components can display messages (for example, when a summary is successfully generated or if an error occurs during video processing).
 
-- Centralized state management for notifications
-- Support for multiple concurrent toasts
-- Auto-dismiss functionality
-- Position-based grouping
-- Type-safe toast creation
-
-3. **Toast Components**
-
-```typescript
-// Show different types of toasts
-toast.success("Operation completed successfully");
-toast.error("An error occurred");
-toast.warning("Please review your input");
-toast.info("New update available");
-
-// Customizable options
-toast.show({
-  message: "Custom toast",
-  variant: ToastVariant.SUCCESS,
-  position: ToastPosition.TOP_RIGHT,
-  duration: 5000,
-  isClosable: true,
-});
-```
-
-4. **Toast Features**:
-
-- Multiple positions support
-- Variant-based styling
-- Animated transitions
-- Auto-dismiss with configurable duration
-- Manual close option
-- Stacking and grouping
-- Accessibility support
-
-### UI Components
-
-1. **Toast Components**:
-
-- `ToastContainer.tsx` - Toast notification manager
-  - Position-based rendering
-  - Framer Motion animations
-  - Responsive design
-  - Icon support for variants
-  - Customizable styling
-- Toast variants with consistent styling:
-  - Success: Green theme
-  - Error: Red theme
-  - Warning: Yellow theme
-  - Info: Blue theme
-
-2. **Toast Usage**:
-
-```typescript
-const { success, error, warning, info } = useToast();
-
-// Show success toast
-success("Profile updated successfully", {
-  title: "Success",
-  duration: 3000,
-  position: "top-right",
-});
-
-// Show error toast
-error("Failed to save changes", {
-  title: "Error",
-  isClosable: true,
-});
-```
+---
 
 ### AI Service Integration
 
-The application uses OpenAI as its primary AI service provider, with a standardized implementation:
+All AI functionality is provided by the OpenAIService:
 
-1. **OpenAI Types and Interfaces**
+- **Chat and Summarization:**  
+  Routes like `/api/openai/chat` and `/api/openai/summarize` provision chat completions and detailed summaries. Prompts are structured with system and user messages to ensure clarity and formatting (including bullet points where appropriate).
 
-```typescript
-enum OpenAIModel {
-  GPT4 = "gpt-4-turbo-preview",
-  GPT35 = "gpt-3.5-turbo-0125",
-  GPT4_VISION = "gpt-4-vision-preview",
-}
+- **Audio Transcription:**  
+  The `/api/openai/transcribe` route accepts a file upload and processes it using OpenAI Whisper.
 
-interface ChatCompletionOptions {
-  model?: OpenAIModel;
-  temperature?: number;
-  max_tokens?: number;
-  functions?: FunctionDefinition[];
-  function_call?: "auto" | "none" | { name: string };
-}
+- **Tag Generation:**  
+  Tags are generated along with summaries from the processed transcript text and summary content.
 
-interface SummaryRequest {
-  text: string;
-  options?: {
-    maxLength?: number;
-    format?: "paragraph" | "bullets";
-    includeTags?: boolean;
-  };
-}
-```
+All AI-related API calls include robust error handling and retries using a custom retry utility.
 
-2. **OpenAI Service**
-
-- Centralized service for all OpenAI interactions
-- Standardized error handling
-- Type-safe API calls
-- Streaming support for chat completions
-
-3. **API Routes**
-
-```typescript
-// Chat completion with streaming
-POST /api/openai/chat
-{
-  "messages": Message[],
-  "options": ChatCompletionOptions
-}
-
-// Text summarization
-POST /api/openai/summarize
-{
-  "text": string,
-  "options": {
-    "maxLength": number,
-    "format": "paragraph" | "bullets",
-    "includeTags": boolean
-  }
-}
-
-// Audio transcription
-POST /api/openai/transcribe
-FormData with "file" field (audio file)
-```
-
-4. **Features**:
-
-- Streaming chat responses
-- Configurable model selection
-- Temperature and token control
-- Function calling support
-- Audio transcription
-- Text summarization with tags
+---
 
 ### API Route Implementation
 
-All API routes follow a consistent pattern:
+Each API route follows a consistent pattern:
 
-1. **Request Validation**
+1. **Request Validation:**  
+   Using Zod schemas to validate incoming JSON data; if validation fails, an AppError is thrown.
 
-```typescript
-const requestSchema = z.object({
-  // Schema definition using Zod
-});
+2. **Core Logic Delegation:**  
+   Once validated, requests call corresponding service layer methods (e.g. `generateChatCompletion()` in OpenAIService or `processVideo()` in VideoProcessingService).
 
-const result = requestSchema.safeParse(body);
-if (!result.success) {
-  throw new AppError(
-    "Invalid request data",
-    ErrorCode.VALIDATION_INVALID_FORMAT,
-    HttpStatus.BAD_REQUEST,
-    { details: result.error.format() }
-  );
-}
-```
+3. **Error Handling and Response:**  
+   Errors caught are converted to standardized error responses. On success, the JSON response is wrapped inside a top‑level “data” object.
 
-2. **Error Handling**
-
-```typescript
-try {
-  // Route logic
-} catch (error) {
-  if (error instanceof AppError) {
-    throw error;
-  }
-  throw new AppError(
-    "Error message",
-    ErrorCode.API_SERVICE_UNAVAILABLE,
-    HttpStatus.INTERNAL_ERROR
-  );
-}
-```
-
-3. **Response Format**
-
-```typescript
-// Success response
-{
-  "data": {
-    // Response data
-  }
-}
-
-// Error response
-{
-  "error": {
-    "message": string,
-    "code": string,
-    "details": object
-  }
-}
-```
+---
 
 ### Storage Service Implementation
 
-User Stories:
+Transcripts are stored and retrieved via Supabase Storage:
 
-1. As a user, when I provide a URL, I want the application to generate a detailed transcript of the video and store it in Supabase Storage. This transcript should be used to generate a summary of the video.
-2. As a user, when I or another user provide the same URL, I want the application to use the existing transcript from Supabase Storage instead of generating a new one. The transcript should be stored at the same path regardless of the user.
-3. As a user, I want to be able to view the summaries of the videos I have summarized in the past through a feature called 'Past Summaries'. This requires a database table that connects the IDs of URLs, the IDs of the users, and the date on which they requested the summary.
-4. As a user, I want to be able to authenticate using a dummy email and password for now, ensuring that the application recognizes me and allows me to access my past summaries.
+- **Path Generation:**  
+  All transcripts are stored under a unified directory structure:
 
-#### Database Schema
+  ```typescript
+  const getTranscriptPath = (videoId: string): string =>
+    `transcripts/${videoId}.json`;
+  ```
 
-```typescript
-// Database Tables
-interface Video {
-  id: string; // Primary key (video_id from YouTube URL)
-  url: string; // Full YouTube URL
-  transcript_path: string; // Path in Supabase Storage
-  last_updated: Date; // Timestamp of last transcript update
-  language: string; // Language of the video/transcript
-}
+- **Storage Utilities:**  
+  Functions such as `storeTranscript()`, `getTranscript()`, and `deleteTranscript()` manage file operations using Supabase’s storage API while handling errors with consistent AppError objects.
 
-interface UserSummary {
-  id: string; // Primary key
-  user_id: string; // Foreign key to auth.users
-  video_id: string; // Foreign key to videos table
-  summary: string; // Generated summary text
-  tags: string[]; // Array of tags
-  created_at: Date; // Timestamp of summary creation
-  updated_at: Date; // Timestamp of last refresh
-}
+---
 
-// Type for stored transcript
-interface StoredTranscript {
-  video_id: string;
-  language: string;
-  segments: {
-    start: number; // Timestamp start
-    end: number; // Timestamp end
-    text: string; // Segment text
-  }[];
-  metadata: {
-    title: string;
-    channel: string;
-    duration: number;
-    last_updated: Date;
-  };
-}
-```
+### Video Processing Service
 
-#### Storage Utilities
+The VideoProcessingService coordinates the overall processing of a YouTube URL:
 
-```typescript
-// Storage path generation
-const getTranscriptPath = (videoId: string) => `transcripts/${videoId}.json`;
+- **Processing Flow:**
 
-// Transcript storage functions
-const storeTranscript = async (
-  videoId: string,
-  transcript: StoredTranscript
-): Promise<void> => {
-  const path = getTranscriptPath(videoId);
-  await supabase.storage
-    .from("transcripts")
-    .upload(path, JSON.stringify(transcript), {
-      upsert: true,
-      contentType: "application/json",
-    });
-};
+  1. Extract the video ID from the URL.
+  2. Fetch the transcript—either by calling an external YouTube transcript API (or using Supabase Storage if already stored) or by generating a new transcript.
+  3. Split transcript text into manageable chunks and pass them to OpenAI for summarization.
+  4. Generate tags from summary content.
+  5. Create or update the video record and user summary record.
+  6. Return the summary object to be rendered on the frontend.
 
-const getTranscript = async (
-  videoId: string
-): Promise<StoredTranscript | null> => {
-  const path = getTranscriptPath(videoId);
-  const { data, error } = await supabase.storage
-    .from("transcripts")
-    .download(path);
+- **Refresh Capability:**  
+  Users can refresh summaries (via the `/api/videos/refresh` route) to update both the transcript and its summary.
 
-  if (error || !data) return null;
-  return JSON.parse(await data.text());
-};
-```
-
-#### Video Processing Service
-
-```typescript
-class VideoProcessingService {
-  async processVideo(url: string, userId: string): Promise<UserSummary> {
-    const videoId = extractVideoId(url);
-
-    // Check existing video record
-    let video = await this.findVideoRecord(videoId);
-    let transcript: StoredTranscript;
-
-    if (!video) {
-      // Generate new transcript
-      transcript = await this.generateTranscript(url);
-      await storeTranscript(videoId, transcript);
-
-      // Create video record
-      video = await this.createVideoRecord(videoId, url, transcript);
-    } else {
-      transcript = await getTranscript(videoId);
-    }
-
-    // Generate or retrieve summary
-    const summary = await this.getOrCreateSummary(userId, videoId, transcript);
-
-    return summary;
-  }
-
-  async refreshVideo(videoId: string, userId: string): Promise<UserSummary> {
-    // Generate new transcript
-    const video = await this.findVideoRecord(videoId);
-    const transcript = await this.generateTranscript(video.url);
-
-    // Update storage and records
-    await storeTranscript(videoId, transcript);
-    await this.updateVideoRecord(videoId, transcript);
-
-    // Generate new summary
-    const summary = await this.generateSummary(transcript);
-    await this.updateUserSummary(userId, videoId, summary);
-
-    return summary;
-  }
-}
-```
-
-#### API Routes
-
-```typescript
-// POST /api/videos/process
-async function processVideo(req: NextRequest): Promise<NextResponse> {
-  const { url } = await req.json();
-  const userId = await requireAuth(req);
-
-  const service = new VideoProcessingService();
-  const summary = await service.processVideo(url, userId);
-
-  return NextResponse.json({ data: summary });
-}
-
-// POST /api/videos/refresh
-async function refreshVideo(req: NextRequest): Promise<NextResponse> {
-  const { videoId } = await req.json();
-  const userId = await requireAuth(req);
-
-  const service = new VideoProcessingService();
-  const summary = await service.refreshVideo(videoId, userId);
-
-  return NextResponse.json({ data: summary });
-}
-
-// GET /api/summaries
-async function getUserSummaries(req: NextRequest): Promise<NextResponse> {
-  const userId = await requireAuth(req);
-
-  const { data: summaries } = await supabase
-    .from("user_summaries")
-    .select("*, videos(*)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-
-  return NextResponse.json({ data: summaries });
-}
-```
-
-This implementation provides:
-
-- Efficient transcript storage and reuse across users
-- Clear separation between video data and user-specific summaries
-- Support for transcript refresh functionality
-- Structured storage of transcripts with timestamps
-- Language support for multi-language videos
-- Read-only history with refresh capability
-- Session persistence until cache clear
-- Foundation for future OAuth integration
-
-The system uses Supabase Storage for transcript files and Supabase Database for relational data, providing a scalable and maintainable solution that meets all specified requirements while maintaining data integrity and user privacy.
+---
 
 ### Authentication Implementation
 
-The application uses Supabase for authentication with a clean, production-ready implementation:
+Currently, the application uses a placeholder user ("anonymous") in API routes. In future steps, Supabase Authentication may be fully integrated:
 
-1. **Supabase Client Configuration**
+- **Supabase Client Configuration:**  
+  The Supabase client is configured in a dedicated folder (e.g. in `src/supabase/`) using environment variables for the Supabase URL and anonymous key.
 
-```typescript
-// Minimal Supabase client configuration in src/lib/auth/supabase.ts
-export const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: true,
-    },
-  }
-);
-```
+- **Auth Context (Future Work):**  
+  Although not yet implemented, a dedicated AuthContext and associated middleware functions can be added to manage user sessions, protect API routes, and differentiate individual users’ summaries.
 
-2. **Authentication Context**
-
-```typescript
-// Clean AuthContext implementation in src/lib/auth/AuthContext.tsx
-interface AuthContextType {
-  user: User | null;
-  isLoading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signOut: () => Promise<void>;
-  error: AuthError | null;
-}
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // ... implementation with proper state management and error handling
-}
-```
-
-3. **Route Protection**
-
-```typescript
-// Robust middleware in src/lib/auth/middleware.ts
-export async function getUserId(req: NextRequest): Promise<string> {
-  // ... secure session validation
-}
-
-export function withAuth(handler: (req: NextRequest) => Promise<NextResponse>) {
-  // ... proper error handling and type safety
-}
-```
+---
 
 ### Key Features
 
-1. **Type Safety**
+1. **Type Safety:**  
+   The entire codebase is written in TypeScript with strict type definitions for API inputs/outputs, database records, error handling, and UI states.
 
-   - Full TypeScript support with proper types
-   - Database type integration
-   - Error type definitions
+2. **Modular Architecture:**  
+   Clear separation between pages, shared UI components, service logic, and utilities ensures maintainability and scalability.
 
-2. **Security**
+3. **Robust Error Handling:**  
+   Consistent use of AppError, Zod for schema validation, and centralized error responses ensures that errors are caught, logged (using a custom logger), and communicated clearly to the client.
 
-   - Server-side session validation
-   - Proper cookie handling
-   - Secure error responses
+4. **State Management:**  
+   Context providers for loading and toast notifications provide a responsive and interactive user experience.
 
-3. **Error Handling**
+5. **Flexible AI Integration:**  
+   Although currently only OpenAI is used, the architecture makes it straightforward to add or swap out AI providers in the future.
 
-   - Consistent error types
-   - Proper error messages
-   - Status code mapping
-
-4. **State Management**
-   - Clean context implementation
-   - Loading states
-   - Error states
-
-### Best Practices
-
-1. **Clean Architecture**
-
-   - Separation of concerns
-   - Modular components
-   - Clear interfaces
-
-2. **Type Safety**
-
-   - No any types
-   - Proper error typing
-   - Database type integration
-
-3. **Security**
-
-   - Environment variable validation
-   - Secure cookie handling
-   - Protected routes
-
-4. **Error Handling**
-   - Consistent error format
-   - Proper status codes
-   - Detailed error messages
-
-The implementation follows Supabase's best practices and Next.js 14 patterns, providing a solid foundation for authentication in the application.
+---
 
 ### Future Enhancements
 
-1. **Error Handling**
+- **Enhanced Authentication:**  
+  Integrate full Supabase Auth (or another OAuth provider) to support user-specific summaries and secure routes.
 
-   - Add comprehensive error states
-   - Implement user feedback
-   - Add retry mechanisms
+- **Expanded AI Options:**  
+  While currently using only OpenAI, additional integrations (such as with Anthropic or Deepgram) could be added if desired.
 
-2. **Security**
+- **Improved Error and Retry Handling:**  
+  Further enhancements in the retry mechanism and more granular error messages can improve reliability.
 
-   - Enhanced security headers
-   - Session management features
-   - Rate limiting
+- **User Experience Improvements:**  
+  Additional loading states, detailed error feedback, and improved UI animations will increase usability.
 
-3. **User Experience**
-   - Loading states
-   - Progress indicators
-   - Clear error messages
-
-The implementation follows a "start simple, add complexity later" approach, ensuring core functionality works before adding additional features. This provides a solid foundation for future enhancements while maintaining code clarity and reliability.
+- **Persistent Data Storage:**  
+  Moving from an in‑memory store to full Supabase Database integration for all video, summary, and channel records will better support multi‑user environments and data persistence.

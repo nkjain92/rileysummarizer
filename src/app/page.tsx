@@ -250,7 +250,7 @@ export default function Home() {
           )}
 
           {/* Only show empty state when there are no summaries in localStorage */}
-          {!isLoading && summaries.length === 0 && !localStorage.getItem(SUMMARIES_CACHE_KEY) && (
+          {!isLoading && summaries.length === 0 && (typeof window !== "undefined" ? !localStorage.getItem(SUMMARIES_CACHE_KEY) : true) && (
             <div className='text-center py-16'>
               <div className='bg-white/70 backdrop-blur-sm rounded-2xl p-8 shadow-xl border border-purple-100/20'>
                 <h3 className='text-2xl font-semibold text-gray-800 mb-3'>No summaries yet</h3>

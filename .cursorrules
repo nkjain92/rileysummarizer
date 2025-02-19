@@ -42,6 +42,30 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 
 # Project Rules
 
+1. **Code Style & Consistency**  
+   • Use Prettier, ESLint, and TypeScript's strict mode for consistency.  
+   • Follow consistent naming conventions (camelCase for variables, PascalCase for React components).
+
+2. **Modularity & Separation of Concerns**  
+   • All business logic must reside in the `src/lib/` directory (services, utils, contexts, and types).  
+   • API endpoints (in `src/app/api/`) must wrap business logic in try/catch blocks and use the custom `AppError` class for errors.
+
+3. **API Contract & Error Handling**  
+   • All endpoints return a JSON with either a `{ data: ... }` or an `{ error: ... }` structure.  
+   • Validate request data using Zod schemas before processing.
+
+4. **Testing & Documentation**  
+   • Document inline with JSDoc comments for functions and services.  
+   • Write unit and integration tests for core services (e.g., video processing, AI integrations).
+
+5. **Feature Parity & Minimal Disruption**  
+   • Do not change the core functionalities (video processing, transcript storage, summary generation) during refactoring.  
+   • Maintain an "anonymous" user model for now and document where a persistent user system would be integrated later.
+
+6. **Logging & Debugging**  
+   • Use the provided `logger` utility consistently.  
+   • Log context and errors in each service to aid debugging and future enhancements.
+
 # Lessons
 
 1. When using OpenAI SDK, use the SDK types directly instead of creating custom types
@@ -75,52 +99,3 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 
 # Scratchpad
 
-## Task: Remove Authentication and Switch to In-Memory Storage
-
-### Current Progress:
-
-[X] 1. Removed auth-related directories and files
-
-- Removed src/app/auth/
-- Removed src/app/login/
-- Removed src/lib/auth/
-- Removed src/components/auth/
-- Removed src/middleware.ts
-- Removed scripts/create-test-users.ts
-
-[X] 2. Removed auth-related code from
-
-- src/app/layout.tsx (removed AuthProvider)
-- src/app/page.tsx (removed auth-related code)
-- .env.local (removed Supabase env vars)
-- src/lib/services/DatabaseService.ts (replaced Supabase with in-memory storage)
-- src/lib/services/VideoProcessingService.ts (removed Supabase and auth)
-- src/app/api/videos/process/route.ts (removed auth)
-- src/app/api/videos/summaries/route.ts (removed auth)
-- src/app/api/videos/summaries/update/route.ts (removed auth)
-- src/app/api/videos/refresh/route.ts (removed auth)
-
-[X] 3. Updated types
-
-- src/lib/types/database.ts (updated types to include relationships)
-
-[X] 4. Replaced auth with anonymous user
-
-- All user IDs are now set to 'anonymous'
-- All channel IDs are now set to 'anonymous'
-- Removed session checks and auth middleware
-
-[X] 5. Implemented in-memory storage
-
-- Added store object in DatabaseService
-- Implemented CRUD operations for all data types
-- Maintained type safety and relationships
-- Added proper error handling
-
-### Next Steps:
-
-1. Add tests for in-memory storage
-2. Add data persistence mechanism
-3. Add proper documentation
-4. Add error recovery strategies
-5. Consider implementing caching layer
