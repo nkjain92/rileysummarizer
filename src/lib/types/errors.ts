@@ -33,6 +33,7 @@ export enum ErrorCode {
   VIDEO_NOT_FOUND = "video/not-found",
   VIDEO_INVALID_URL = "video/invalid-url",
   VIDEO_PROCESSING_FAILED = "video/processing-failed",
+  VIDEO_METADATA_ERROR = 'VIDEO_METADATA_ERROR',
 
   // AI Service Errors
   AI_GENERATION_FAILED = "ai/generation-failed",

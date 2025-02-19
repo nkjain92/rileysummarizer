@@ -1,7 +1,7 @@
 import { StoredTranscript } from "@/lib/types/storage";
 import { AppError, ErrorCode, HttpStatus } from "@/lib/types/errors";
-import { 
-  getTranscript, 
+import {
+  getTranscript,
   storeTranscript
 } from "@/lib/utils/storage";
 import { extractVideoInfo } from "@/lib/utils/youtube";
@@ -65,7 +65,7 @@ export class VideoProcessingService extends DatabaseService {
    */
   private async generateTranscript(url: string, language?: string): Promise<StoredTranscript> {
     this.logger.info("Generating transcript", { url, language });
-    
+
     try {
       const videoInfo = extractVideoInfo(url);
       if (!videoInfo.videoId) {
@@ -110,7 +110,7 @@ export class VideoProcessingService extends DatabaseService {
    */
   private async generateSummary(transcript: StoredTranscript): Promise<string> {
     this.logger.info("Generating summary", { videoId: transcript.video_id });
-    
+
     try {
       const text = transcript.segments.map(s => s.text).join(" ");
       const result = await this.openAIService.processYouTubeVideo(`https://youtube.com/watch?v=${transcript.video_id}`);
@@ -126,7 +126,7 @@ export class VideoProcessingService extends DatabaseService {
    */
   async processVideo(url: string, userId: string, options: VideoProcessingOptions = {}): Promise<UserSummaryRecord> {
     this.logger.info("Processing video", { url, userId, options });
-    
+
     try {
       const videoId = extractVideoInfo(url).videoId;
       if (!videoId) {
@@ -144,7 +144,7 @@ export class VideoProcessingService extends DatabaseService {
       if (!video || options.refresh) {
         // Generate new transcript
         transcript = await this.generateTranscript(url, options.language);
-        
+
         if (!video) {
           // Create new video record
           video = await this.createVideoRecord(videoId, url, transcript);
@@ -180,9 +180,9 @@ export class VideoProcessingService extends DatabaseService {
         tags: [],
       });
 
-      this.logger.info("Processed video successfully", { 
+      this.logger.info("Processed video successfully", {
         videoId,
-        summaryId: userSummary.id 
+        summaryId: userSummary.id
       });
 
       return userSummary;
@@ -197,7 +197,7 @@ export class VideoProcessingService extends DatabaseService {
    */
   async refreshVideo(videoId: string, userId: string): Promise<UserSummaryRecord> {
     this.logger.info("Refreshing video", { videoId, userId });
-    
+
     try {
       const video = await this.findVideoRecord(videoId);
       if (!video) {
@@ -215,4 +215,4 @@ export class VideoProcessingService extends DatabaseService {
       throw error;
     }
   }
-} 
+}

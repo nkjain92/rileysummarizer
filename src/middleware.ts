@@ -1,32 +1,19 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createServerSupabaseClient } from '@/lib/utils/supabaseServer';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { logger } from '@/lib/utils/logger';
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
-
-  // Log request details
-  logger.info('Middleware processing request:', {
-    path: req.nextUrl.pathname,
-    hasAuthHeader: !!req.headers.get('authorization'),
-  });
-
+export async function middleware(request: NextRequest) {
   try {
-    // Refresh session if expired
+    const supabase = createServerSupabaseClient();
     const {
       data: { session },
       error: sessionError,
     } = await supabase.auth.getSession();
 
-    // Log session details
-    logger.info('Middleware session check:', {
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      hasError: !!sessionError,
-      errorMessage: sessionError?.message,
-    });
+    if (sessionError) {
+      throw sessionError;
+    }
 
     // If we have a session, check if the user has a profile
     if (session?.user) {
@@ -36,33 +23,23 @@ export async function middleware(req: NextRequest) {
         .eq('id', session.user.id)
         .single();
 
-      // Log profile check
-      logger.info('Middleware profile check:', {
-        hasProfile: !!profile,
-        hasError: !!profileError,
-        errorMessage: profileError?.message,
-      });
-
-      // If no profile exists, create one
-      if (!profile && !profileError) {
-        const { error: createError } = await supabase.from('profiles').insert([
-          {
-            id: session.user.id,
-            name: session.user.email?.split('@')[0] || 'Anonymous',
-            created_at: new Date().toISOString(),
-          },
-        ]);
+      if (profileError && !profile) {
+        // Create profile if it doesn't exist
+        const { error: createError } = await supabase.from('profiles').insert({
+          id: session.user.id,
+          name: session.user.email?.split('@')[0] || 'Anonymous',
+        });
 
         if (createError) {
-          logger.error('Error creating profile:', createError);
+          logger.error('Failed to create user profile:', createError);
         }
       }
     }
 
-    return res;
+    return NextResponse.next();
   } catch (error) {
     logger.error('Middleware error:', error as Error);
-    return res;
+    return NextResponse.next();
   }
 }
 

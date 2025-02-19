@@ -5,6 +5,12 @@ import { extractVideoInfo } from "@/lib/utils/youtube";
 import { fetchTranscript } from "@/lib/utils/youtube";
 import { OpenAIStream } from "ai";
 
+interface VideoInfo {
+  videoId: string;
+  channelId: string | null;
+  title: string;
+}
+
 interface VideoSummary {
   videoId: string;
   channelId: string | null;
@@ -35,7 +41,7 @@ export class OpenAIService {
    * @returns A VideoSummary object containing the summary, tags, and transcript
    */
   async processYouTubeVideo(url: string): Promise<VideoSummary> {
-    const videoInfo = extractVideoInfo(url);
+    const videoInfo = await extractVideoInfo(url);
     if (!videoInfo.videoId) {
       throw new AppError(
         "Invalid YouTube URL",
@@ -79,7 +85,7 @@ export class OpenAIService {
 
     return {
       videoId: videoInfo.videoId,
-      channelId: videoInfo.channelId,
+      channelId: null,
       title: videoData.title || 'Unknown Title',
       summary: finalSummary,
       detailed_summary: "", // Will be generated on demand

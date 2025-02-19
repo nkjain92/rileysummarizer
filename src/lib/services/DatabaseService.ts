@@ -16,7 +16,7 @@ import {
   SummaryWithRelations,
   UserSummaryWithRelations,
 } from '@/lib/types/database';
-import { supabase } from "@/lib/utils/supabaseClient";
+import { createServerSupabaseClient } from "@/lib/utils/supabaseServer";
 import { PostgrestError } from '@supabase/supabase-js';
 
 /**
@@ -24,15 +24,17 @@ import { PostgrestError } from '@supabase/supabase-js';
  */
 export class DatabaseService {
   protected logger;
+  protected supabase;
 
   constructor(context: string) {
     this.logger = logger.withContext({ service: context });
+    this.supabase = createServerSupabaseClient();
   }
 
   // Profile methods
   async getProfile(userId: string): Promise<ProfileRecord | null> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -61,7 +63,7 @@ export class DatabaseService {
 
   async upsertProfile(profile: Omit<ProfileRecord, 'created_at'>): Promise<ProfileRecord> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from('profiles')
         .upsert(profile)
         .select()
@@ -90,7 +92,7 @@ export class DatabaseService {
 
   // Channel methods
   async findChannelById(id: string): Promise<ChannelRecord | null> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('channels')
       .select('*')
       .eq('id', id)
@@ -105,7 +107,7 @@ export class DatabaseService {
   }
 
   async upsertChannel(channel: Omit<ChannelRecord, 'created_at'>): Promise<ChannelRecord> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('channels')
       .upsert(channel)
       .select()
@@ -126,63 +128,50 @@ export class DatabaseService {
   async findOrCreateChannel(input: CreateChannelInput): Promise<ChannelRecord> {
     try {
       // First try to find the channel
-      const { data: existingChannel, error: findError } = await supabase
+      const { data: existingChannel, error: findError } = await this.supabase
         .from('channels')
         .select('*')
-        .eq('id', input.id)
+        .eq('url', input.url)
         .single();
 
-      if (findError && findError.code !== 'PGRST116') {
-        throw findError;
-      }
-
       if (existingChannel) {
-        // Update channel name if it's 'Unknown Channel'
-        if (existingChannel.name === 'Unknown Channel' && input.name !== 'Unknown Channel') {
-          const { data: updatedChannel, error: updateError } = await supabase
-            .from('channels')
-            .update({ name: input.name })
-            .eq('id', input.id)
-            .select()
-            .single();
-
-          if (updateError) {
-            throw updateError;
-          }
-
-          return updatedChannel;
-        }
         return existingChannel;
       }
 
-      // If channel doesn't exist, create it
-      const { data: newChannel, error: createError } = await supabase
+      // If not found, create a new channel
+      const { data: newChannel, error: createError } = await this.supabase
         .from('channels')
-        .insert([{
-          ...input,
-          name: input.name || 'Unknown Channel', // Ensure we always have a name
-        }])
+        .insert([input])
         .select()
         .single();
 
       if (createError) {
-        throw createError;
+        logger.error('Error in findOrCreateChannel:', createError as Error | PostgrestError, { channelId: input.url });
+        throw new AppError(
+          "Failed to create channel",
+          ErrorCode.DATABASE_ERROR,
+          HttpStatus.INTERNAL_ERROR,
+          { cause: createError }
+        );
       }
 
       return newChannel;
     } catch (error) {
-      logger.error('Error in findOrCreateChannel:', error as Error | PostgrestError, { channelId: input.id });
+      if (error instanceof AppError) throw error;
+
+      logger.error('Error in findOrCreateChannel:', error as Error | PostgrestError, { channelId: input.url });
       throw new AppError(
-        'Failed to find or create channel',
+        "Failed to find or create channel",
         ErrorCode.DATABASE_ERROR,
         HttpStatus.INTERNAL_ERROR,
+        { cause: error }
       );
     }
   }
 
   // Video methods
   async findVideoById(id: string): Promise<ContentRecord | null> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('videos')
       .select('*')
       .eq('id', id)
@@ -201,7 +190,7 @@ export class DatabaseService {
   }
 
   async createVideo(video: Omit<ContentRecord, 'created_at'>): Promise<ContentRecord> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('videos')
       .insert(video)
       .select()
@@ -224,7 +213,7 @@ export class DatabaseService {
   }
 
   async updateVideo(id: string, video: Partial<ContentRecord>): Promise<ContentRecord> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('videos')
       .update(video)
       .eq('id', id)
@@ -249,7 +238,7 @@ export class DatabaseService {
 
   // Summary methods
   async getUserSummaries(userId: string): Promise<UserSummaryHistoryRecord[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('user_summaries')
       .select('*')
       .eq('user_id', userId)
@@ -276,7 +265,7 @@ export class DatabaseService {
   }
 
   async createUserSummary(summary: Omit<UserSummaryHistoryRecord, 'id' | 'created_at' | 'updated_at'>): Promise<UserSummaryHistoryRecord> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('user_summaries')
       .insert(summary)
       .select()
@@ -299,7 +288,7 @@ export class DatabaseService {
   }
 
   async updateUserSummary(id: string, summary: Partial<UserSummaryHistoryRecord>): Promise<UserSummaryHistoryRecord> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('user_summaries')
       .update(summary)
       .eq('id', id)
@@ -323,7 +312,7 @@ export class DatabaseService {
   }
 
   async findSummaryByVideoId(videoId: string, userId: string): Promise<UserSummaryHistoryRecord | null> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('user_summaries')
       .select('*')
       .eq('video_id', videoId)
@@ -343,7 +332,7 @@ export class DatabaseService {
   }
 
   async getUserSummaryHistory(userId: string): Promise<UserSummaryWithRelations[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('user_summary_history')
       .select('*, content:content(*), summary:summaries(*)')
       .eq('user_id', userId)
@@ -362,7 +351,7 @@ export class DatabaseService {
   }
 
   async createUserSummaryHistory(userId: string, contentId: string, summaryId: string): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from('user_summary_history')
       .insert({
         user_id: userId,
@@ -380,50 +369,101 @@ export class DatabaseService {
     }
   }
 
-  async findSummaryByContentId(contentId: string): Promise<SummaryWithRelations | null> {
-    const { data, error } = await supabase
-      .from('summaries')
-      .select('*, content:content(*)')
-      .eq('content_id', contentId)
-      .eq('summary_type', 'short')
-      .single();
+  async findSummaryByContentId(contentId: string): Promise<SummaryRecord | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('summaries')
+        .select('*')
+        .eq('content_id', contentId)
+        .eq('summary_type', 'short')
+        .single();
 
-    if (error && error.code !== 'PGRST116') {
-      this.logger.error("Error fetching summary:", error, { contentId });
-      throw new AppError(
-        "Failed to fetch summary",
-        ErrorCode.DATABASE_ERROR,
-        HttpStatus.INTERNAL_ERROR
-      );
+      if (error) {
+        this.logger.error("Error fetching summary:", error, { contentId });
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      this.logger.error("Error in findSummaryByContentId:", error as Error | PostgrestError, { contentId });
+      return null;
     }
-
-    return data;
   }
 
   async createSummary(input: CreateSummaryInput): Promise<SummaryRecord> {
-    const { data, error } = await supabase
-      .from('summaries')
-      .insert([input])
-      .select()
-      .single();
+    try {
+      const { data, error } = await this.supabase
+        .from('summaries')
+        .insert({
+          content_id: input.content_id,
+          summary: input.summary,
+          summary_type: input.summary_type
+        })
+        .select()
+        .single();
 
-    if (error) {
-      this.logger.error("Error creating summary:", error, { input });
+      if (error) {
+        this.logger.error("Error creating summary:", error, { input });
+        throw new AppError(
+          "Failed to create summary",
+          ErrorCode.DATABASE_ERROR,
+          HttpStatus.INTERNAL_ERROR
+        );
+      }
+
+      return data;
+    } catch (error) {
+      this.logger.error("Error in createSummary:", error as Error | PostgrestError, { input });
       throw new AppError(
         "Failed to create summary",
         ErrorCode.DATABASE_ERROR,
         HttpStatus.INTERNAL_ERROR
       );
     }
+  }
 
-    return data;
+  async updateSummary(id: string, updates: Partial<SummaryRecord>): Promise<SummaryWithRelations> {
+    try {
+      const { data, error } = await this.supabase
+        .from('summaries')
+        .update(updates)
+        .eq('id', id)
+        .select(`
+          *,
+          content (
+            *,
+            channel:source_id (*)
+          )
+        `)
+        .single();
+
+      if (error) {
+        this.logger.error("Error updating summary:", error, { id, updates });
+        throw new AppError(
+          "Failed to update summary",
+          ErrorCode.DATABASE_ERROR,
+          HttpStatus.INTERNAL_ERROR,
+          { cause: error }
+        );
+      }
+
+      return data;
+    } catch (error) {
+      this.logger.error("Error in updateSummary:", error as Error | PostgrestError, { id, updates });
+      throw new AppError(
+        "Failed to update summary",
+        ErrorCode.DATABASE_ERROR,
+        HttpStatus.INTERNAL_ERROR,
+        { cause: error }
+      );
+    }
   }
 
   // Tag methods
   async findOrCreateTag(input: CreateTagInput): Promise<TagRecord> {
     try {
       // First try to find the tag
-      const { data: existingTag, error: findError } = await supabase
+      const { data: existingTag, error: findError } = await this.supabase
         .from('tags')
         .select('*')
         .eq('name', input.name)
@@ -438,7 +478,7 @@ export class DatabaseService {
       }
 
       // If tag doesn't exist, create it
-      const { data: newTag, error: createError } = await supabase
+      const { data: newTag, error: createError } = await this.supabase
         .from('tags')
         .insert([input])
         .select()
@@ -460,7 +500,7 @@ export class DatabaseService {
   }
 
   async addContentTag(contentTag: ContentTagRecord): Promise<void> {
-    const { error } = await supabase
+    const { error } = await this.supabase
       .from('content_tags')
       .insert(contentTag)
       .select();
@@ -476,7 +516,7 @@ export class DatabaseService {
   }
 
   async getContentTags(contentId: string): Promise<TagRecord[]> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('content_tags')
       .select('*')
       .eq('content_id', contentId);
@@ -491,7 +531,7 @@ export class DatabaseService {
     }
 
     const tags = await Promise.all(data.map(async ct => {
-      const { data: tagData, error: tagError } = await supabase
+      const { data: tagData, error: tagError } = await this.supabase
         .from('tags')
         .select('*')
         .eq('id', ct.tag_id)
@@ -519,7 +559,7 @@ export class DatabaseService {
         tag_id: tagId,
       }));
 
-      const { error } = await supabase.from('content_tags').insert(contentTags);
+      const { error } = await this.supabase.from('content_tags').insert(contentTags);
 
       if (error) {
         throw error;
@@ -536,7 +576,7 @@ export class DatabaseService {
 
   // Content Methods
   async findContentById(id: string): Promise<ContentWithRelations | null> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('content')
       .select('*, channel:channels(*)')
       .eq('id', id)
@@ -553,53 +593,59 @@ export class DatabaseService {
   async findOrCreateContent(input: CreateContentInput): Promise<ContentWithRelations> {
     try {
       // First try to find the content
-      const { data: existingContent, error: findError } = await supabase
+      const { data: existingContent, error: findError } = await this.supabase
         .from('content')
-        .select('*, channel:channels(*)')
-        .eq('id', input.id)
+        .select(`
+          *,
+          channel:source_id (*),
+          summaries (*),
+          tags (*)
+        `)
+        .eq('unique_identifier', input.unique_identifier)
         .single();
-
-      if (findError && findError.code !== 'PGRST116') {
-        throw findError;
-      }
 
       if (existingContent) {
         return existingContent;
       }
 
-      // If content doesn't exist, create it
-      const { data: newContent, error: createError } = await supabase
+      // If not found, create new content
+      const { data: newContent, error: createError } = await this.supabase
         .from('content')
-        .insert([{
-          id: input.id,
-          content_type: input.content_type,
-          unique_identifier: input.unique_identifier,
-          title: input.title,
-          url: input.url,
-          transcript: input.transcript,
-          published_at: input.published_at,
-          source_id: input.source_id,
-        }])
-        .select('*, channel:channels(*)')
+        .insert([input])
+        .select(`
+          *,
+          channel:source_id (*),
+          summaries (*),
+          tags (*)
+        `)
         .single();
 
       if (createError) {
-        throw createError;
+        logger.error('Error in findOrCreateContent:', createError as Error | PostgrestError, { contentId: input.unique_identifier });
+        throw new AppError(
+          "Failed to create content",
+          ErrorCode.DATABASE_ERROR,
+          HttpStatus.INTERNAL_ERROR,
+          { cause: createError }
+        );
       }
 
       return newContent;
     } catch (error) {
-      logger.error('Error in findOrCreateContent:', error as Error | PostgrestError, { contentId: input.id });
+      if (error instanceof AppError) throw error;
+
+      logger.error('Error in findOrCreateContent:', error as Error | PostgrestError, { contentId: input.unique_identifier });
       throw new AppError(
-        'Failed to find or create content',
+        "Failed to find or create content",
         ErrorCode.DATABASE_ERROR,
         HttpStatus.INTERNAL_ERROR,
+        { cause: error }
       );
     }
   }
 
   async createContent(content: CreateContentInput): Promise<ContentWithRelations> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('content')
       .insert(content)
       .select('*, channel:channels(*)')
@@ -618,7 +664,7 @@ export class DatabaseService {
   }
 
   async updateContent(id: string, updates: Partial<ContentRecord>): Promise<ContentWithRelations> {
-    const { data, error } = await supabase
+    const { data, error } = await this.supabase
       .from('content')
       .update(updates)
       .eq('id', id)

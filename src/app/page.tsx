@@ -10,11 +10,16 @@ import { ToastContainer } from '@/components/ui/Toast';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { logger } from '@/lib/utils/logger';
-import { SummaryWithRelations } from '@/lib/types/database';
+import { SummaryWithRelations, ContentWithRelations } from '@/lib/types/database';
 import { supabase } from '@/lib/utils/supabaseClient';
 
 interface SummaryWithTags extends SummaryWithRelations {
   tags: string[];
+  content: ContentWithRelations & {
+    channel: {
+      name: string;
+    };
+  };
 }
 
 // Cache key for localStorage
@@ -57,20 +62,12 @@ export default function Home() {
 
   const handleSubmit = async (url: string) => {
     setIsLoading(true);
-    logger.info('Starting video processing', { url });
     try {
       // Get the current session
       const {
         data: { session },
         error: sessionError,
       } = await supabase.auth.getSession();
-
-      logger.info('Client session check:', {
-        hasSession: !!session,
-        hasAccessToken: !!session?.access_token,
-        hasError: !!sessionError,
-        errorMessage: sessionError?.message,
-      });
 
       if (!session?.access_token) {
         toast.error('Please sign in to process videos');
@@ -79,10 +76,6 @@ export default function Home() {
       }
 
       // Process video using VideoProcessingService
-      logger.info('Sending request to process video', {
-        url,
-        accessToken: session.access_token.substring(0, 20) + '...',
-      });
       const response = await fetch('/api/videos/process', {
         method: 'POST',
         headers: {
@@ -93,23 +86,15 @@ export default function Home() {
         body: JSON.stringify({ url }),
       });
 
-      // Log the raw response for debugging
-      logger.info('Received response from server', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-      });
-
       // Get the response text first
       const responseText = await response.text();
-      logger.info('Received response text', { responseText });
 
       // Try to parse as JSON regardless of status
       let parsedResponse;
       try {
         parsedResponse = JSON.parse(responseText);
       } catch (parseError) {
-        logger.error('Failed to parse response as JSON', parseError as Error, { responseText });
+        logger.error('Failed to parse response as JSON', parseError as Error);
         throw new Error('Unexpected server response format');
       }
 
@@ -120,7 +105,6 @@ export default function Home() {
       }
 
       const summary = parsedResponse.data;
-      logger.info('Successfully processed video', { summary });
 
       // Transform database record to UI format
       const newSummary: SummaryWithTags = {
@@ -157,7 +141,7 @@ export default function Home() {
       toast.success('Summary generated successfully!');
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error occurred');
-      logger.error('Failed to process video', err, { url });
+      logger.error('Failed to process video', err);
       toast.error(err.message);
     } finally {
       setIsLoading(false);
