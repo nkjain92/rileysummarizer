@@ -1,6 +1,6 @@
 # Database Schema Documentation
 
-This document is the primary reference for the database schema and backend architecture of the **Riley Video Summarizer** project. It covers the core tables, relationships, and API endpoints. As the project evolves, update this document to reflect changes in the database structure, API endpoints, or backend functionality.
+This document is the primary reference for the database schema and backend architecture of the **Summarizer** project. It covers the core tables, relationships, and API endpoints. As the project evolves, update this document to reflect changes in the database structure, API endpoints, or backend functionality.
 
 ---
 

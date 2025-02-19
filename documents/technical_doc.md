@@ -2,7 +2,7 @@
 
 ### Current Project State
 
-RileySummarizer is a Next.js 13+ application that enables users to obtain AI-generated summaries of YouTube videos. The current implementation leverages OpenAI’s models for multiple tasks:
+Summarizer is a Next.js 13+ application that enables users to obtain AI-generated summaries of YouTube videos. The current implementation leverages OpenAI’s models for multiple tasks:
 
 - **Chat Completion and Summarization:** Using GPT‑3.5 Turbo and GPT‑4 (via separate routes) to generate both brief and detailed summaries.
 - **Audio Transcription:** Using OpenAI Whisper to transcribe audio files.
@@ -16,7 +16,7 @@ The app employs modern standards with TypeScript, Tailwind CSS for styling, and 
 
 ### Codebase Summary
 
-RileySummarizer is a modular Next.js application built around AI‑powered YouTube video summarization. Key features include:
+Summarizer is a modular Next.js application built around AI‑powered YouTube video summarization. Key features include:
 
 - **AI Services:** All AI interactions (chat completions, text summarization, and audio transcription) are handled using OpenAI’s APIs.
 - **Video Processing:** A dedicated service processes a YouTube URL by retrieving (or generating) its transcript, splitting it into meaningful chunks, generating summaries (including detailed versions on demand), and extracting tags.
@@ -37,10 +37,10 @@ RileySummarizer is a modular Next.js application built around AI‑powered YouTu
 
 #### Folder Structure
 
-A high‑level overview of the project structure (under the `rileysummarizer/` root):
+A high‑level overview of the project structure (under the `summarizer/` root):
 
 ```
-rileysummarizer/
+summarizer/
 ├── src/
 │   ├── app/                    # Next.js App Router pages and API routes
 │   │   ├── api/               # API route handlers for OpenAI, videos, YouTube, etc.

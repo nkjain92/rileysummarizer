@@ -7,7 +7,7 @@ import { ToastContainer } from '@/components/ui/Toast';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'RileySummarizer',
+  title: 'Summarizer',
   description: 'AI-powered YouTube video summarizer',
 };
 
@@ -17,14 +17,13 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html 
-      lang='en' 
+    <html
+      lang='en'
       suppressHydrationWarning
       {...{
         'data-qb-extension-installed': '',
-        'data-qb-installed': ''
-      }}
-    >
+        'data-qb-installed': '',
+      }}>
       <body className={`${inter.className} antialiased`}>
         <ToastProvider>
           <div className='min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50'>
