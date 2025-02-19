@@ -8,6 +8,7 @@ import { OpenAIStream } from "ai";
 interface VideoSummary {
   videoId: string;
   channelId: string | null;
+  title: string;
   summary: string;
   detailed_summary: string;
   tags: string[];
@@ -47,6 +48,19 @@ export class OpenAIService {
     const transcript = await fetchTranscript(videoInfo.videoId);
     const chunks = this.splitTranscript(transcript);
 
+    // Get video metadata from YouTube oEmbed
+    const oembedResponse = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`
+    );
+    if (!oembedResponse.ok) {
+      throw new AppError(
+        "Failed to fetch video metadata",
+        ErrorCode.API_SERVICE_UNAVAILABLE,
+        HttpStatus.INTERNAL_ERROR
+      );
+    }
+    const videoData = await oembedResponse.json();
+
     // Generate initial summary only (defer detailed summary)
     let finalSummary: string;
     if (chunks.length > 1) {
@@ -66,6 +80,7 @@ export class OpenAIService {
     return {
       videoId: videoInfo.videoId,
       channelId: videoInfo.channelId,
+      title: videoData.title || 'Unknown Title',
       summary: finalSummary,
       detailed_summary: "", // Will be generated on demand
       tags,
@@ -79,7 +94,7 @@ export class OpenAIService {
     let currentChunk = "";
 
     const sentences = transcript.split(/(?<=[.!?])\s+/);
-    
+
     for (const sentence of sentences) {
       if (currentChunk.length + sentence.length > MAX_CHUNK_LENGTH) {
         chunks.push(currentChunk.trim());
@@ -97,7 +112,7 @@ export class OpenAIService {
   }
 
   private async generateChunkSummary(chunk: string): Promise<string> {
-    const response = await retryApi(() => 
+    const response = await retryApi(() =>
       this.client.chat.completions.create({
         model: "gpt-4-turbo",
         messages: [
@@ -170,12 +185,12 @@ export class OpenAIService {
 
       return tags.length === 10 ? tags : [
         ...tags,
-        ...['Technology', 'Innovation', 'Education', 'Development', 'Business', 
+        ...['Technology', 'Innovation', 'Education', 'Development', 'Business',
             'Strategy', 'Growth', 'Success', 'Future', 'Insights'].slice(0, 10 - tags.length)
       ];
     } catch (error) {
       console.error("Error generating tags:", error);
-      return ['Technology', 'Innovation', 'Education', 'Development', 'Business', 
+      return ['Technology', 'Innovation', 'Education', 'Development', 'Business',
               'Strategy', 'Growth', 'Success', 'Future', 'Insights'];
     }
   }
@@ -250,4 +265,4 @@ export class OpenAIService {
       );
     }
   }
-} 
+}

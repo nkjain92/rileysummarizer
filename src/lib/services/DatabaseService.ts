@@ -1,15 +1,23 @@
 import { AppError, ErrorCode, HttpStatus } from "@/lib/types/errors";
 import { logger } from "@/lib/utils/logger";
 import {
-  VideoRecord,
-  UserSummaryRecord,
+  ContentRecord,
+  UserSummaryHistoryRecord,
   ChannelRecord,
   ProfileRecord,
   TagRecord,
   ContentTagRecord,
-  SubscriptionRecord
+  CreateChannelInput,
+  CreateContentInput,
+  CreateSummaryInput,
+  CreateTagInput,
+  SummaryRecord,
+  ContentWithRelations,
+  SummaryWithRelations,
+  UserSummaryWithRelations,
 } from '@/lib/types/database';
 import { supabase } from "@/lib/utils/supabaseClient";
+import { PostgrestError } from '@supabase/supabase-js';
 
 /**
  * Base service class for database operations using Supabase
@@ -40,9 +48,9 @@ export class DatabaseService {
       }
 
       return data;
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof AppError) throw err;
-      this.logger.error("Unexpected error in getProfile:", err, { userId });
+      this.logger.error("Unexpected error in getProfile:", err as Error | PostgrestError, { userId });
       throw new AppError(
         "An unexpected error occurred while fetching the profile",
         ErrorCode.DATABASE_ERROR,
@@ -69,9 +77,9 @@ export class DatabaseService {
       }
 
       return data;
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof AppError) throw err;
-      this.logger.error("Unexpected error in upsertProfile:", err, { profile });
+      this.logger.error("Unexpected error in upsertProfile:", err as Error | PostgrestError, { profile });
       throw new AppError(
         "An unexpected error occurred while upserting the profile",
         ErrorCode.DATABASE_ERROR,
@@ -115,8 +123,65 @@ export class DatabaseService {
     return data;
   }
 
+  async findOrCreateChannel(input: CreateChannelInput): Promise<ChannelRecord> {
+    try {
+      // First try to find the channel
+      const { data: existingChannel, error: findError } = await supabase
+        .from('channels')
+        .select('*')
+        .eq('id', input.id)
+        .single();
+
+      if (findError && findError.code !== 'PGRST116') {
+        throw findError;
+      }
+
+      if (existingChannel) {
+        // Update channel name if it's 'Unknown Channel'
+        if (existingChannel.name === 'Unknown Channel' && input.name !== 'Unknown Channel') {
+          const { data: updatedChannel, error: updateError } = await supabase
+            .from('channels')
+            .update({ name: input.name })
+            .eq('id', input.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            throw updateError;
+          }
+
+          return updatedChannel;
+        }
+        return existingChannel;
+      }
+
+      // If channel doesn't exist, create it
+      const { data: newChannel, error: createError } = await supabase
+        .from('channels')
+        .insert([{
+          ...input,
+          name: input.name || 'Unknown Channel', // Ensure we always have a name
+        }])
+        .select()
+        .single();
+
+      if (createError) {
+        throw createError;
+      }
+
+      return newChannel;
+    } catch (error) {
+      logger.error('Error in findOrCreateChannel:', error as Error | PostgrestError, { channelId: input.id });
+      throw new AppError(
+        'Failed to find or create channel',
+        ErrorCode.DATABASE_ERROR,
+        HttpStatus.INTERNAL_ERROR,
+      );
+    }
+  }
+
   // Video methods
-  async findVideoById(id: string): Promise<VideoRecord | null> {
+  async findVideoById(id: string): Promise<ContentRecord | null> {
     const { data, error } = await supabase
       .from('videos')
       .select('*')
@@ -128,14 +193,14 @@ export class DatabaseService {
       return null;
     }
 
-    const channel = await this.findChannelById(data.channel_id);
+    const channel = await this.findChannelById(data.source_id || '');
     return {
       ...data,
       channel
     };
   }
 
-  async createVideo(video: Omit<VideoRecord, 'created_at'>): Promise<VideoRecord> {
+  async createVideo(video: Omit<ContentRecord, 'created_at'>): Promise<ContentRecord> {
     const { data, error } = await supabase
       .from('videos')
       .insert(video)
@@ -151,14 +216,14 @@ export class DatabaseService {
       );
     }
 
-    const channel = await this.findChannelById(video.channel_id);
+    const channel = await this.findChannelById(data.source_id || '');
     return {
       ...data,
       channel
     };
   }
 
-  async updateVideo(id: string, video: Partial<VideoRecord>): Promise<VideoRecord> {
+  async updateVideo(id: string, video: Partial<ContentRecord>): Promise<ContentRecord> {
     const { data, error } = await supabase
       .from('videos')
       .update(video)
@@ -175,7 +240,7 @@ export class DatabaseService {
       );
     }
 
-    const channel = await this.findChannelById(data.channel_id);
+    const channel = await this.findChannelById(data.source_id || '');
     return {
       ...data,
       channel
@@ -183,7 +248,7 @@ export class DatabaseService {
   }
 
   // Summary methods
-  async getUserSummaries(userId: string): Promise<UserSummaryRecord[]> {
+  async getUserSummaries(userId: string): Promise<UserSummaryHistoryRecord[]> {
     const { data, error } = await supabase
       .from('user_summaries')
       .select('*')
@@ -210,7 +275,7 @@ export class DatabaseService {
     return Promise.all(summaries);
   }
 
-  async createUserSummary(summary: Omit<UserSummaryRecord, 'id' | 'created_at' | 'updated_at'>): Promise<UserSummaryRecord> {
+  async createUserSummary(summary: Omit<UserSummaryHistoryRecord, 'id' | 'created_at' | 'updated_at'>): Promise<UserSummaryHistoryRecord> {
     const { data, error } = await supabase
       .from('user_summaries')
       .insert(summary)
@@ -233,7 +298,7 @@ export class DatabaseService {
     };
   }
 
-  async updateUserSummary(id: string, summary: Partial<UserSummaryRecord>): Promise<UserSummaryRecord> {
+  async updateUserSummary(id: string, summary: Partial<UserSummaryHistoryRecord>): Promise<UserSummaryHistoryRecord> {
     const { data, error } = await supabase
       .from('user_summaries')
       .update(summary)
@@ -257,7 +322,7 @@ export class DatabaseService {
     };
   }
 
-  async findSummaryByVideoId(videoId: string, userId: string): Promise<UserSummaryRecord | null> {
+  async findSummaryByVideoId(videoId: string, userId: string): Promise<UserSummaryHistoryRecord | null> {
     const { data, error } = await supabase
       .from('user_summaries')
       .select('*')
@@ -277,41 +342,121 @@ export class DatabaseService {
     };
   }
 
-  // Tag methods
-  async findOrCreateTag(name: string): Promise<TagRecord> {
+  async getUserSummaryHistory(userId: string): Promise<UserSummaryWithRelations[]> {
     const { data, error } = await supabase
-      .from('tags')
-      .select('*')
-      .eq('name', name)
-      .single();
+      .from('user_summary_history')
+      .select('*, content:content(*), summary:summaries(*)')
+      .eq('user_id', userId)
+      .order('generated_at', { ascending: false });
 
     if (error) {
-      this.logger.error("Error fetching tag:", error, { name });
+      this.logger.error("Error fetching user summary history:", error, { userId });
       throw new AppError(
-        "Failed to fetch tag",
+        "Failed to fetch user summary history",
         ErrorCode.DATABASE_ERROR,
         HttpStatus.INTERNAL_ERROR
       );
     }
 
-    if (data) return data;
+    return data;
+  }
 
-    const { data: newTagData, error: newTagError } = await supabase
-      .from('tags')
-      .insert({ name })
+  async createUserSummaryHistory(userId: string, contentId: string, summaryId: string): Promise<void> {
+    const { error } = await supabase
+      .from('user_summary_history')
+      .insert({
+        user_id: userId,
+        content_id: contentId,
+        summary_id: summaryId,
+      });
+
+    if (error) {
+      this.logger.error("Error creating user summary history:", error, { userId, contentId, summaryId });
+      throw new AppError(
+        "Failed to create user summary history",
+        ErrorCode.DATABASE_ERROR,
+        HttpStatus.INTERNAL_ERROR
+      );
+    }
+  }
+
+  async findSummaryByContentId(contentId: string): Promise<SummaryWithRelations | null> {
+    const { data, error } = await supabase
+      .from('summaries')
+      .select('*, content:content(*)')
+      .eq('content_id', contentId)
+      .eq('summary_type', 'short')
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      this.logger.error("Error fetching summary:", error, { contentId });
+      throw new AppError(
+        "Failed to fetch summary",
+        ErrorCode.DATABASE_ERROR,
+        HttpStatus.INTERNAL_ERROR
+      );
+    }
+
+    return data;
+  }
+
+  async createSummary(input: CreateSummaryInput): Promise<SummaryRecord> {
+    const { data, error } = await supabase
+      .from('summaries')
+      .insert([input])
       .select()
       .single();
 
-    if (newTagError) {
-      this.logger.error("Error creating tag:", newTagError, { name });
+    if (error) {
+      this.logger.error("Error creating summary:", error, { input });
       throw new AppError(
-        "Failed to create tag",
+        "Failed to create summary",
         ErrorCode.DATABASE_ERROR,
         HttpStatus.INTERNAL_ERROR
       );
     }
 
-    return newTagData;
+    return data;
+  }
+
+  // Tag methods
+  async findOrCreateTag(input: CreateTagInput): Promise<TagRecord> {
+    try {
+      // First try to find the tag
+      const { data: existingTag, error: findError } = await supabase
+        .from('tags')
+        .select('*')
+        .eq('name', input.name)
+        .single();
+
+      if (findError && findError.code !== 'PGRST116') {
+        throw findError;
+      }
+
+      if (existingTag) {
+        return existingTag;
+      }
+
+      // If tag doesn't exist, create it
+      const { data: newTag, error: createError } = await supabase
+        .from('tags')
+        .insert([input])
+        .select()
+        .single();
+
+      if (createError) {
+        throw createError;
+      }
+
+      return newTag;
+    } catch (error) {
+      logger.error('Error in findOrCreateTag:', error as Error | PostgrestError, { tagName: input.name });
+      throw new AppError(
+        'Failed to find or create tag',
+        ErrorCode.DATABASE_ERROR,
+        HttpStatus.INTERNAL_ERROR,
+      );
+    }
   }
 
   async addContentTag(contentTag: ContentTagRecord): Promise<void> {
@@ -367,36 +512,103 @@ export class DatabaseService {
     return tags;
   }
 
-  // Subscription methods
-  async getSubscriptions(userId: string): Promise<SubscriptionRecord[]> {
-    const { data, error } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', userId);
+  async addContentTags(contentId: string, tagIds: string[]): Promise<void> {
+    try {
+      const contentTags = tagIds.map(tagId => ({
+        content_id: contentId,
+        tag_id: tagId,
+      }));
 
-    if (error) {
-      this.logger.error("Error fetching subscriptions:", error, { userId });
+      const { error } = await supabase.from('content_tags').insert(contentTags);
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      logger.error('Error in addContentTags:', error as Error | PostgrestError, { contentId, tagIds });
       throw new AppError(
-        "Failed to fetch subscriptions",
+        'Failed to add content tags',
         ErrorCode.DATABASE_ERROR,
-        HttpStatus.INTERNAL_ERROR
+        HttpStatus.INTERNAL_ERROR,
       );
     }
-
-    return data;
   }
 
-  async addSubscription(subscription: Omit<SubscriptionRecord, 'id' | 'created_at'>): Promise<SubscriptionRecord> {
+  // Content Methods
+  async findContentById(id: string): Promise<ContentWithRelations | null> {
     const { data, error } = await supabase
-      .from('subscriptions')
-      .insert(subscription)
-      .select()
+      .from('content')
+      .select('*, channel:channels(*)')
+      .eq('id', id)
       .single();
 
     if (error) {
-      this.logger.error("Error adding subscription:", error, { subscription });
+      this.logger.error("Error fetching content:", error, { id });
+      return null;
+    }
+
+    return data;
+  }
+
+  async findOrCreateContent(input: CreateContentInput): Promise<ContentWithRelations> {
+    try {
+      // First try to find the content
+      const { data: existingContent, error: findError } = await supabase
+        .from('content')
+        .select('*, channel:channels(*)')
+        .eq('id', input.id)
+        .single();
+
+      if (findError && findError.code !== 'PGRST116') {
+        throw findError;
+      }
+
+      if (existingContent) {
+        return existingContent;
+      }
+
+      // If content doesn't exist, create it
+      const { data: newContent, error: createError } = await supabase
+        .from('content')
+        .insert([{
+          id: input.id,
+          content_type: input.content_type,
+          unique_identifier: input.unique_identifier,
+          title: input.title,
+          url: input.url,
+          transcript: input.transcript,
+          published_at: input.published_at,
+          source_id: input.source_id,
+        }])
+        .select('*, channel:channels(*)')
+        .single();
+
+      if (createError) {
+        throw createError;
+      }
+
+      return newContent;
+    } catch (error) {
+      logger.error('Error in findOrCreateContent:', error as Error | PostgrestError, { contentId: input.id });
       throw new AppError(
-        "Failed to add subscription",
+        'Failed to find or create content',
+        ErrorCode.DATABASE_ERROR,
+        HttpStatus.INTERNAL_ERROR,
+      );
+    }
+  }
+
+  async createContent(content: CreateContentInput): Promise<ContentWithRelations> {
+    const { data, error } = await supabase
+      .from('content')
+      .insert(content)
+      .select('*, channel:channels(*)')
+      .single();
+
+    if (error) {
+      this.logger.error("Error creating content:", error, { content });
+      throw new AppError(
+        "Failed to create content",
         ErrorCode.DATABASE_ERROR,
         HttpStatus.INTERNAL_ERROR
       );
@@ -405,20 +617,23 @@ export class DatabaseService {
     return data;
   }
 
-  async removeSubscription(userId: string, subscriptionId: string): Promise<void> {
-    const { error } = await supabase
-      .from('subscriptions')
-      .delete()
-      .eq('id', subscriptionId)
-      .eq('user_id', userId);
+  async updateContent(id: string, updates: Partial<ContentRecord>): Promise<ContentWithRelations> {
+    const { data, error } = await supabase
+      .from('content')
+      .update(updates)
+      .eq('id', id)
+      .select('*, channel:channels(*)')
+      .single();
 
     if (error) {
-      this.logger.error("Error removing subscription:", error, { userId, subscriptionId });
+      this.logger.error("Error updating content:", error, { id, updates });
       throw new AppError(
-        "Failed to remove subscription",
+        "Failed to update content",
         ErrorCode.DATABASE_ERROR,
         HttpStatus.INTERNAL_ERROR
       );
     }
+
+    return data;
   }
 }

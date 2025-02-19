@@ -2,21 +2,30 @@
  * Error codes for the application
  */
 export enum ErrorCode {
-  // API Errors
-  API_SERVICE_UNAVAILABLE = "api/service-unavailable",
-  API_RATE_LIMIT = "api/rate-limit",
-  API_INVALID_RESPONSE = "api/invalid-response",
+  // Auth errors
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  FORBIDDEN = 'FORBIDDEN',
 
-  // Database Errors
-  DATABASE_ERROR = "database/error",
+  // Input validation errors
+  INVALID_INPUT = 'INVALID_INPUT',
+  VALIDATION_INVALID_FORMAT = 'VALIDATION_INVALID_FORMAT',
+
+  // API errors
+  API_SERVICE_UNAVAILABLE = 'API_SERVICE_UNAVAILABLE',
+  API_RATE_LIMIT_EXCEEDED = 'API_RATE_LIMIT_EXCEEDED',
+
+  // Database errors
+  DATABASE_ERROR = 'DATABASE_ERROR',
+  STORAGE_FILE_NOT_FOUND = 'STORAGE_FILE_NOT_FOUND',
+
+  // Generic errors
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 
   // Validation Errors
-  VALIDATION_INVALID_FORMAT = "validation/invalid-format",
   VALIDATION_REQUIRED_FIELD = "validation/required-field",
   VALIDATION_INVALID_TYPE = "validation/invalid-type",
 
   // Storage Errors
-  STORAGE_FILE_NOT_FOUND = "storage/file-not-found",
   STORAGE_UPLOAD_FAILED = "storage/upload-failed",
   STORAGE_DOWNLOAD_FAILED = "storage/download-failed",
 
@@ -29,20 +38,27 @@ export enum ErrorCode {
   AI_GENERATION_FAILED = "ai/generation-failed",
   AI_INVALID_RESPONSE = "ai/invalid-response",
   AI_RATE_LIMIT = "ai/rate-limit",
-
-  INVALID_INPUT = "INVALID_INPUT",
 }
 
 /**
  * HTTP status codes
  */
 export enum HttpStatus {
+  // Success
   OK = 200,
   CREATED = 201,
+  NO_CONTENT = 204,
+
+  // Client errors
   BAD_REQUEST = 400,
+  UNAUTHORIZED = 401,
   FORBIDDEN = 403,
   NOT_FOUND = 404,
+  CONFLICT = 409,
+  UNPROCESSABLE_ENTITY = 422,
   TOO_MANY_REQUESTS = 429,
+
+  // Server errors
   INTERNAL_ERROR = 500,
   SERVICE_UNAVAILABLE = 503,
 }
