@@ -84,9 +84,9 @@ rileysummarizer/
 3. **Library Directory (`src/lib/`):**
 
    - Implements core business logic:
-     - **Services:**  
-       • `OpenAIService` – Provides chat completions, detailed summarization, and audio transcription (using OpenAI Whisper).  
-       • `DatabaseService` – Simulates database operations (videos, channels, and summaries) using an in‑memory store.  
+     - **Services:**
+       • `OpenAIService` – Provides chat completions, detailed summarization, and audio transcription (using OpenAI Whisper).
+       • `DatabaseService` – Simulates database operations (videos, channels, and summaries) using an in‑memory store.
        • `VideoProcessingService` – Coordinates transcript fetching, summary generation, and database updates.
      - **Utilities:** Logger, retry mechanisms, request validation, and error formatting.
      - **Contexts:** Toast and loading contexts for centralized UI state management.
@@ -101,28 +101,28 @@ rileysummarizer/
 
 The application exposes several API endpoints:
 
-- **/api/openai/chat:**  
+- **/api/openai/chat:**
   Handles chat completion requests. Validates a messages array and delegates the request to OpenAIService.
 
-- **/api/openai/summarize:**  
+- **/api/openai/summarize:**
   Processes a text input to generate a detailed summary (optionally with bullet points) using OpenAI. Validation is done via Zod, and detailed logging is used throughout the process.
 
-- **/api/openai/transcribe:**  
+- **/api/openai/transcribe:**
   Accepts a file upload (audio) and uses OpenAI’s Whisper to return a transcript.
 
-- **/api/videos/process:**  
+- **/api/videos/process:**
   Takes a YouTube URL, validates it, and uses OpenAIService to process the video. It retrieves (or generates) a transcript (including via an external YouTube transcript API), creates or updates DB records, and ultimately generates a summary and tags.
 
-- **/api/videos/refresh:**  
+- **/api/videos/refresh:**
   Refreshes a video’s transcript and summary by reprocessing the YouTube video and updating storage and database entries.
 
-- **/api/videos/summaries/update:**  
+- **/api/videos/summaries/update:**
   Updates the detailed summary stored for a given video.
 
-- **/api/videos/summaries (GET):**  
+- **/api/videos/summaries (GET):**
   Retrieves all summaries associated with the default “anonymous” user (intended for future authenticated use).
 
-- **/api/youtube/transcript:**  
+- **/api/youtube/transcript:**
   Fetches YouTube transcripts using the RapidAPI endpoint. It handles errors (e.g. when a transcript is not available) and returns the combined transcript text.
 
 All API responses conform to a consistent format with a top‑level “data” field on success or an “error” object describing the problem.
@@ -145,10 +145,10 @@ Key UI components include:
 
 Two central context providers manage shared application state:
 
-- **LoadingContext:**  
+- **LoadingContext:**
   Provides mechanisms to trigger global or operation‑specific loading states. Components like the Loading UI (and overlays) use this context to display progress and messages.
 
-- **ToastContext:**  
+- **ToastContext:**
   Manages toast notifications for success, error, warning, and informational messages. Components and API responses use this context to show realtime feedback to the user.
 
 _(Note: Although earlier iterations included authentication and voice recording contexts, the current codebase primarily uses an “anonymous” user placeholder.)_
@@ -200,9 +200,9 @@ interface BaseError {
 }
 
 enum ErrorCode {
-  VALIDATION_INVALID_FORMAT = "validation/invalid-format",
-  STORAGE_FILE_NOT_FOUND = "storage/file-not-found",
-  API_SERVICE_UNAVAILABLE = "api/service-unavailable",
+  VALIDATION_INVALID_FORMAT = 'validation/invalid-format',
+  STORAGE_FILE_NOT_FOUND = 'storage/file-not-found',
+  API_SERVICE_UNAVAILABLE = 'api/service-unavailable',
   // … other error codes
 }
 
@@ -217,10 +217,10 @@ class AppError extends Error implements BaseError {
 
 ### Error Handling
 
-- **Centralized Error Handling:**  
+- **Centralized Error Handling:**
   All API routes wrap operations in try–catch blocks. Validated errors (using Zod) result in an AppError, and unexpected errors are wrapped before sending a response.
 
-- **Consistent API Response Format:**  
+- **Consistent API Response Format:**
   Success responses include a "data" field; error responses include an "error" object with message, code, and optional details.
 
 ---
@@ -233,11 +233,11 @@ Loading is managed centrally via the LoadingContext:
 
   ```typescript
   enum LoadingType {
-    DATA_FETCH = "data/fetch",
-    FILE_UPLOAD = "file/upload",
-    API_REQUEST = "api/request",
-    AI_PROCESSING = "ai/processing",
-    VIDEO_PROCESSING = "video/processing",
+    DATA_FETCH = 'data/fetch',
+    FILE_UPLOAD = 'file/upload',
+    API_REQUEST = 'api/request',
+    AI_PROCESSING = 'ai/processing',
+    VIDEO_PROCESSING = 'video/processing',
   }
 
   interface LoadingState {
@@ -248,7 +248,7 @@ Loading is managed centrally via the LoadingContext:
   }
   ```
 
-- **Usage:**  
+- **Usage:**
   Hooks (via `useLoading()`) expose methods to start, update, and stop loading operations, which UI components then use to display spinners or progress bars.
 
 ---
@@ -261,14 +261,14 @@ The toast notification system uses context to display non‑blocking messages:
 
   ```typescript
   enum ToastVariant {
-    SUCCESS = "success",
-    ERROR = "error",
-    WARNING = "warning",
-    INFO = "info",
+    SUCCESS = 'success',
+    ERROR = 'error',
+    WARNING = 'warning',
+    INFO = 'info',
   }
 
   enum ToastPosition {
-    TOP_RIGHT = "top-right",
+    TOP_RIGHT = 'top-right',
     // other positions…
   }
 
@@ -283,7 +283,7 @@ The toast notification system uses context to display non‑blocking messages:
   }
   ```
 
-- **Usage:**  
+- **Usage:**
   Using the `useToast()` hook, components can display messages (for example, when a summary is successfully generated or if an error occurs during video processing).
 
 ---
@@ -292,13 +292,13 @@ The toast notification system uses context to display non‑blocking messages:
 
 All AI functionality is provided by the OpenAIService:
 
-- **Chat and Summarization:**  
+- **Chat and Summarization:**
   Routes like `/api/openai/chat` and `/api/openai/summarize` provision chat completions and detailed summaries. Prompts are structured with system and user messages to ensure clarity and formatting (including bullet points where appropriate).
 
-- **Audio Transcription:**  
+- **Audio Transcription:**
   The `/api/openai/transcribe` route accepts a file upload and processes it using OpenAI Whisper.
 
-- **Tag Generation:**  
+- **Tag Generation:**
   Tags are generated along with summaries from the processed transcript text and summary content.
 
 All AI-related API calls include robust error handling and retries using a custom retry utility.
@@ -309,13 +309,13 @@ All AI-related API calls include robust error handling and retries using a custo
 
 Each API route follows a consistent pattern:
 
-1. **Request Validation:**  
+1. **Request Validation:**
    Using Zod schemas to validate incoming JSON data; if validation fails, an AppError is thrown.
 
-2. **Core Logic Delegation:**  
+2. **Core Logic Delegation:**
    Once validated, requests call corresponding service layer methods (e.g. `generateChatCompletion()` in OpenAIService or `processVideo()` in VideoProcessingService).
 
-3. **Error Handling and Response:**  
+3. **Error Handling and Response:**
    Errors caught are converted to standardized error responses. On success, the JSON response is wrapped inside a top‑level “data” object.
 
 ---
@@ -324,15 +324,14 @@ Each API route follows a consistent pattern:
 
 Transcripts are stored and retrieved via Supabase Storage:
 
-- **Path Generation:**  
+- **Path Generation:**
   All transcripts are stored under a unified directory structure:
 
   ```typescript
-  const getTranscriptPath = (videoId: string): string =>
-    `transcripts/${videoId}.json`;
+  const getTranscriptPath = (videoId: string): string => `transcripts/${videoId}.json`;
   ```
 
-- **Storage Utilities:**  
+- **Storage Utilities:**
   Functions such as `storeTranscript()`, `getTranscript()`, and `deleteTranscript()` manage file operations using Supabase’s storage API while handling errors with consistent AppError objects.
 
 ---
@@ -350,7 +349,7 @@ The VideoProcessingService coordinates the overall processing of a YouTube URL:
   5. Create or update the video record and user summary record.
   6. Return the summary object to be rendered on the frontend.
 
-- **Refresh Capability:**  
+- **Refresh Capability:**
   Users can refresh summaries (via the `/api/videos/refresh` route) to update both the transcript and its summary.
 
 ---
@@ -359,46 +358,46 @@ The VideoProcessingService coordinates the overall processing of a YouTube URL:
 
 Currently, the application uses a placeholder user ("anonymous") in API routes. In future steps, Supabase Authentication may be fully integrated:
 
-- **Supabase Client Configuration:**  
+- **Supabase Client Configuration:**
   The Supabase client is configured in a dedicated folder (e.g. in `src/supabase/`) using environment variables for the Supabase URL and anonymous key.
 
-- **Auth Context (Future Work):**  
+- **Auth Context (Future Work):**
   Although not yet implemented, a dedicated AuthContext and associated middleware functions can be added to manage user sessions, protect API routes, and differentiate individual users’ summaries.
 
 ---
 
 ### Key Features
 
-1. **Type Safety:**  
+1. **Type Safety:**
    The entire codebase is written in TypeScript with strict type definitions for API inputs/outputs, database records, error handling, and UI states.
 
-2. **Modular Architecture:**  
+2. **Modular Architecture:**
    Clear separation between pages, shared UI components, service logic, and utilities ensures maintainability and scalability.
 
-3. **Robust Error Handling:**  
+3. **Robust Error Handling:**
    Consistent use of AppError, Zod for schema validation, and centralized error responses ensures that errors are caught, logged (using a custom logger), and communicated clearly to the client.
 
-4. **State Management:**  
+4. **State Management:**
    Context providers for loading and toast notifications provide a responsive and interactive user experience.
 
-5. **Flexible AI Integration:**  
+5. **Flexible AI Integration:**
    Although currently only OpenAI is used, the architecture makes it straightforward to add or swap out AI providers in the future.
 
 ---
 
 ### Future Enhancements
 
-- **Enhanced Authentication:**  
+- **Enhanced Authentication:**
   Integrate full Supabase Auth (or another OAuth provider) to support user-specific summaries and secure routes.
 
-- **Expanded AI Options:**  
+- **Expanded AI Options:**
   While currently using only OpenAI, additional integrations (such as with Anthropic or Deepgram) could be added if desired.
 
-- **Improved Error and Retry Handling:**  
+- **Improved Error and Retry Handling:**
   Further enhancements in the retry mechanism and more granular error messages can improve reliability.
 
-- **User Experience Improvements:**  
+- **User Experience Improvements:**
   Additional loading states, detailed error feedback, and improved UI animations will increase usability.
 
-- **Persistent Data Storage:**  
+- **Persistent Data Storage:**
   Moving from an in‑memory store to full Supabase Database integration for all video, summary, and channel records will better support multi‑user environments and data persistence.

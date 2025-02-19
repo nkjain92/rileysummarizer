@@ -46,7 +46,7 @@ Our database centers on a unified content model with clear separation of source 
 
 ## Authentication
 
-Authentication is managed by Supabase Auth. The `profiles` table extends Supabase user data by linking on the user’s UUID.
+Authentication is managed by Supabase Auth. The `profiles` table extends Supabase user data by linking on the user's UUID.
 
 ### profiles
 
@@ -59,13 +59,15 @@ CREATE TABLE profiles (
 );
 
 COMMENT ON TABLE profiles IS 'Holds additional user metadata extending Supabase Auth';
+```
 
-Core Tables
+## Core Tables
 
-channels
+### channels
 
 Stores channel details for both YouTube and podcast channels. A channel may optionally link to an RSS feed.
 
+```sql
 CREATE TABLE channels (
   id text PRIMARY KEY, -- Channel ID (YouTube or podcast)
   name text NOT NULL,
@@ -75,11 +77,13 @@ CREATE TABLE channels (
 );
 
 COMMENT ON TABLE channels IS 'Stores channel information for YouTube and podcast channels';
+```
 
-rss_feeds
+### rss_feeds
 
 Stores RSS feed details for channels and podcasts.
 
+```sql
 CREATE TYPE feed_type AS ENUM ('youtube', 'podcast');
 
 CREATE TABLE rss_feeds (
@@ -91,11 +95,13 @@ CREATE TABLE rss_feeds (
 );
 
 COMMENT ON TABLE rss_feeds IS 'Stores RSS feed details for channels and podcasts';
+```
 
-content
+### content
 
 A unified table that stores both videos and podcast episodes. It uses a normalized unique_identifier to handle URL variations and prevent duplicates.
 
+```sql
 CREATE TABLE content (
   id text PRIMARY KEY, -- Content ID (e.g., YouTube Video ID or Podcast Episode ID)
   content_type text NOT NULL CHECK (content_type IN ('video', 'podcast')),
@@ -109,11 +115,13 @@ CREATE TABLE content (
 );
 
 COMMENT ON TABLE content IS 'Unified table storing videos and podcast episodes';
+```
 
-summaries
+### summaries
 
-Stores AI-generated summaries for content items. Each summary row has a type (e.g., ‘short’ or ‘detailed’).
+Stores AI-generated summaries for content items. Each summary row has a type (e.g., 'short' or 'detailed').
 
+```sql
 CREATE TABLE summaries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   content_id text REFERENCES content(id) ON DELETE CASCADE,
@@ -123,13 +131,15 @@ CREATE TABLE summaries (
 );
 
 COMMENT ON TABLE summaries IS 'AI-generated summaries for content items with different types';
+```
 
-Relationship Tables
+## Relationship Tables
 
-subscriptions
+### subscriptions
 
 Tracks user subscriptions to channels or RSS feeds using a polymorphic design.
 
+```sql
 CREATE TYPE subscription_type AS ENUM ('channel', 'feed');
 
 CREATE TABLE subscriptions (
@@ -142,11 +152,13 @@ CREATE TABLE subscriptions (
 );
 
 COMMENT ON TABLE subscriptions IS 'Tracks user subscriptions to channels or RSS feeds';
+```
 
-tags and content_tags
+### tags and content_tags
 
 Used for tagging content items.
 
+```sql
 CREATE TABLE tags (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text UNIQUE NOT NULL
@@ -159,11 +171,13 @@ CREATE TABLE content_tags (
 );
 
 COMMENT ON TABLE content_tags IS 'Associates tags with content items';
+```
 
-user_votes
+### user_votes
 
 Records user upvotes/downvotes on channels. (For simplicity, votes are only at the channel level per your user stories.)
 
+```sql
 CREATE TABLE user_votes (
   user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
   channel_id text REFERENCES channels(id) ON DELETE CASCADE,
@@ -173,11 +187,13 @@ CREATE TABLE user_votes (
 );
 
 COMMENT ON TABLE user_votes IS 'Tracks user votes on channels for ranking and trending analysis';
+```
 
-content_questions
+### content_questions
 
 Stores Q&A interactions for a content item (video or podcast). For now, we handle one-off questions; threaded conversations can be added later if needed.
 
+```sql
 CREATE TABLE content_questions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
@@ -188,11 +204,13 @@ CREATE TABLE content_questions (
 );
 
 COMMENT ON TABLE content_questions IS 'Records Q&A interactions for content items';
+```
 
-user_summary_history
+### user_summary_history
 
-Tracks each instance when a user generates or accesses a summary, enabling a “My Summaries” feed.
+Tracks each instance when a user generates or accesses a summary, enabling a "My Summaries" feed.
 
+```sql
 CREATE TABLE user_summary_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
@@ -202,13 +220,15 @@ CREATE TABLE user_summary_history (
 );
 
 COMMENT ON TABLE user_summary_history IS 'Tracks each summary request by a user for content items';
+```
 
-Utility Tables
+## Utility Tables
 
-daily_digest
+### daily_digest
 
 Stores the content (as JSON) for daily email digests. Cron jobs update this table.
 
+```sql
 CREATE TABLE daily_digest (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
@@ -218,11 +238,13 @@ CREATE TABLE daily_digest (
 );
 
 COMMENT ON TABLE daily_digest IS 'Tracks daily email notifications and stores digest content';
+```
 
-cron_logs
+### cron_logs
 
 Logs the execution of scheduled background tasks for debugging and monitoring.
 
+```sql
 CREATE TABLE cron_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   task_name text NOT NULL,
@@ -232,56 +254,66 @@ CREATE TABLE cron_logs (
 );
 
 COMMENT ON TABLE cron_logs IS 'Logs for monitoring scheduled task execution';
+```
 
-Additional Optimizations
+## Additional Optimizations
 
-Indexes
+### Indexes
 
 To keep queries fast even as data grows, add these indexes:
-	•	content:
 
+#### content:
+
+```sql
 CREATE INDEX idx_content_unique_identifier ON content(unique_identifier);
 CREATE INDEX idx_content_source_id ON content(source_id);
+```
 
+#### summaries:
 
-	•	summaries:
-
+```sql
 CREATE INDEX idx_summaries_content_id ON summaries(content_id);
+```
 
+#### subscriptions:
 
-	•	subscriptions:
-
+```sql
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX idx_subscriptions_type_id ON subscriptions(subscription_type, subscription_id);
+```
 
+#### user_summary_history:
 
-	•	user_summary_history:
-
+```sql
 CREATE INDEX idx_user_summary_history_user_id ON user_summary_history(user_id);
 CREATE INDEX idx_user_summary_history_content_id ON user_summary_history(content_id);
+```
 
+#### user_votes:
 
-	•	user_votes:
-
+```sql
 CREATE INDEX idx_user_votes_channel_id ON user_votes(channel_id);
+```
 
+#### content_questions:
 
-	•	content_questions:
-
+```sql
 CREATE INDEX idx_content_questions_content_id ON content_questions(content_id);
+```
 
-
-
-Search Support
+### Search Support
 
 For the search page (user story #11), add full-text search support to the content table:
-	1.	Add a tsvector Column:
 
+1. Add a tsvector Column:
+
+```sql
 ALTER TABLE content ADD COLUMN search_vector tsvector;
+```
 
+2. Create a Trigger to Update the Column:
 
-	2.	Create a Trigger to Update the Column:
-
+```sql
 CREATE OR REPLACE FUNCTION content_search_vector_update()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -298,92 +330,123 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
 ON content FOR EACH ROW EXECUTE PROCEDURE content_search_vector_update();
+```
 
+3. Create a GIN Index:
 
-	3.	Create a GIN Index:
-
+```sql
 CREATE INDEX content_search_vector_idx ON content USING gin(search_vector);
+```
 
-API Endpoints
+## API Endpoints
 
 Below is an updated outline of API endpoints. The endpoints address the core user stories while keeping the design simple:
-	1.	User Authentication
-(Handled by Supabase Auth)
-	•	POST /auth/register
-	•	POST /auth/login
-	2.	Content Submission & Retrieval
-	•	POST /content
-	•	Purpose: Submit a new video or podcast link.
-	•	Flow:
-	1.	Normalize the URL to a unique_identifier.
-	2.	Check for an existing record.
-	3.	If found, return the existing content_id and summaries; otherwise, insert a new record.
-	•	Input: { url: string }
-	•	Output: { content_id: string, existing: boolean }
-	•	GET /content/:id
-	•	Purpose: Retrieve a specific content item (including its summaries).
-	•	GET /content?url=…
-	•	Alternative: Retrieve content by URL.
-	3.	Summary Generation & Retrieval
-	•	POST /summaries
-	•	Purpose: Generate and store a summary for a content item.
-	•	Input: { content_id: string, summary_type: string }
-	•	Note: Check for an existing summary before generating a new one (to save LLM/API costs).
-	•	GET /summaries/:content_id
-	•	Purpose: Fetch summaries for a given content item.
-	4.	User Summary History
-	•	POST /user-summary-history
-	•	Purpose: Record a summary generation event.
-	•	GET /user-summary-history/:user_id
-	•	Purpose: Retrieve a user’s summary history (join with content and summaries for details).
-	5.	Subscriptions
-	•	POST /subscribe
-	•	Purpose: Subscribe a user to a channel or RSS feed.
-	•	GET /subscriptions/:user_id
-	•	Purpose: Retrieve a user’s subscriptions.
-	6.	Channel Voting (Trending Support)
-	•	POST /vote
-	•	Purpose: Record an upvote or downvote on a channel.
-	•	Note: For simplicity, trending channels can be determined dynamically (e.g., count of upvotes).
-	7.	Content Q&A
-	•	POST /content-questions
-	•	Purpose: Record a question (and optional response) for a content item.
-	•	(Optional for future improvement: a GET endpoint to retrieve full Q&A threads.)
-	8.	Channel Details & Popular Channels
-	•	GET /channels/:id
-	•	Purpose: Retrieve channel details (to display channel name on summary cards).
-	•	GET /popular-channels
-	•	Purpose: Retrieve a list of popular channels (computed dynamically by subscriber count or upvotes).
-	9.	Tags
-	•	GET /tags
-	•	Purpose: Retrieve available tags for use in search or autocomplete features.
-	10.	Search
-	•	GET /search?q=…
-	•	Purpose: Search for content based on keywords (utilizing the full-text search on content.search_vector).
 
-Design Decisions
-	1.	Unified Content & Source Metadata:
-	•	Combining videos and podcasts into one table simplifies the “My Summaries” feed.
-	•	Source metadata is separated into channels and optional RSS feeds.
-	2.	Duplicate Prevention:
-	•	The unique_identifier (with a UNIQUE constraint and an index) ensures duplicate submissions are avoided.
-	3.	Cost Efficiency:
-	•	Before generating a new summary, check for an existing one to avoid extra LLM/API calls.
-	4.	User Interactions:
-	•	User history, subscriptions, and votes are tracked to support personalized feeds and popular channels.
-	5.	Search & Discovery:
-	•	A full-text search mechanism (using tsvector and a trigger) supports efficient search without adding undue complexity.
+1. **User Authentication** (Handled by Supabase Auth)
 
-Future Considerations
-	•	Threaded Q&A:
-Consider adding a self-referencing column (e.g., parent_question_id) to support conversation threads.
-	•	Content Votes:
-Although not required by current user stories, a dedicated table for content votes could be added later if content-level ranking is needed.
-	•	Dedicated Trending Calculation:
-For more advanced “Popular Channels” features, a pre-calculated table (updated via a cron job) might be considered.
-	•	Rate Limiting & Security:
-While Supabase Auth provides basic security, consider adding rate limiting (especially on summary generation) to manage costs and abuse.
+   - POST /auth/login
+   - POST /auth/register
+
+2. **Content Submission & Retrieval**
+
+   - POST /content
+     - Purpose: Submit a new video or podcast link.
+     - Flow:
+       1. Normalize the URL to a unique_identifier.
+       2. Check for an existing record.
+       3. If found, return the existing content_id and summaries; otherwise, insert a new record.
+     - Input: { url: string }
+     - Output: { content_id: string, existing: boolean }
+   - GET /content/:id
+     - Purpose: Retrieve a specific content item (including its summaries).
+   - GET /content?url=…
+     - Alternative: Retrieve content by URL.
+
+3. **Summary Generation & Retrieval**
+
+   - POST /summaries
+     - Purpose: Generate and store a summary for a content item.
+     - Input: { content_id: string, summary_type: string }
+     - Note: Check for an existing summary before generating a new one (to save LLM/API costs).
+   - GET /summaries/:content_id
+     - Purpose: Fetch summaries for a given content item.
+
+4. **User Summary History**
+
+   - POST /user-summary-history
+     - Purpose: Record a summary generation event.
+   - GET /user-summary-history/:user_id
+     - Purpose: Retrieve a user's summary history (join with content and summaries for details).
+
+5. **Subscriptions**
+
+   - POST /subscribe
+     - Purpose: Subscribe a user to a channel or RSS feed.
+   - GET /subscriptions/:user_id
+     - Purpose: Retrieve a user's subscriptions.
+
+6. **Channel Voting (Trending Support)**
+
+   - POST /vote
+     - Purpose: Record an upvote or downvote on a channel.
+     - Note: For simplicity, trending channels can be determined dynamically (e.g., count of upvotes).
+
+7. **Content Q&A**
+
+   - POST /content-questions
+     - Purpose: Record a question (and optional response) for a content item.
+     - (Optional for future improvement: a GET endpoint to retrieve full Q&A threads.)
+
+8. **Channel Details & Popular Channels**
+
+   - GET /channels/:id
+     - Purpose: Retrieve channel details (to display channel name on summary cards).
+   - GET /popular-channels
+     - Purpose: Retrieve a list of popular channels (computed dynamically by subscriber count or upvotes).
+
+9. **Tags**
+
+   - GET /tags
+     - Purpose: Retrieve available tags for use in search or autocomplete features.
+
+10. **Search**
+    - GET /search?q=…
+      - Purpose: Search for content based on keywords (utilizing the full-text search on content.search_vector).
+
+## Design Decisions
+
+1. **Unified Content & Source Metadata:**
+
+   - Combining videos and podcasts into one table simplifies the "My Summaries" feed.
+   - Source metadata is separated into channels and optional RSS feeds.
+
+2. **Duplicate Prevention:**
+
+   - The unique_identifier (with a UNIQUE constraint and an index) ensures duplicate submissions are avoided.
+
+3. **Cost Efficiency:**
+
+   - Before generating a new summary, check for an existing one to avoid extra LLM/API calls.
+
+4. **User Interactions:**
+
+   - User history, subscriptions, and votes are tracked to support personalized feeds and popular channels.
+
+5. **Search & Discovery:**
+   - A full-text search mechanism (using tsvector and a trigger) supports efficient search without adding undue complexity.
+
+## Future Considerations
+
+- **Threaded Q&A:**
+  Consider adding a self-referencing column (e.g., parent_question_id) to support conversation threads.
+
+- **Content Votes:**
+  Although not required by current user stories, a dedicated table for content votes could be added later if content-level ranking is needed.
+
+- **Dedicated Trending Calculation:**
+  For more advanced "Popular Channels" features, a pre-calculated table (updated via a cron job) might be considered.
+
+- **Rate Limiting & Security:**
+  While Supabase Auth provides basic security, consider adding rate limiting (especially on summary generation) to manage costs and abuse.
 
 This revised documentation reflects a balanced approach—addressing performance and search optimizations while keeping the implementation scope manageable for your weekend project.
-
-```
