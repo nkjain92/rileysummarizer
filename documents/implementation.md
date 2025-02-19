@@ -1,450 +1,613 @@
-# Database Schema Documentation
+# Overall Strategy
 
-This document is the primary reference for the database schema and backend architecture of the **Summarizer** project. It covers the core tables, relationships, and API endpoints. As the project evolves, update this document to reflect changes in the database structure, API endpoints, or backend functionality.
+1. **Database-First Integration**
 
----
+   - Fully integrate Supabase as the persistent backend before building features
+   - Create a dedicated Supabase client, write a new migration (with up-to-date schema and RLS policies), and update the DatabaseService to use Supabase
 
-## Table of Contents
+2. **Vertical Slices for Each Feature**
 
-1. [Schema Overview](#schema-overview)
-2. [Authentication](#authentication)
-3. [Core Tables](#core-tables)
-   - [profiles](#profiles)
-   - [channels](#channels)
-   - [rss_feeds](#rss_feeds)
-   - [content](#content)
-   - [summaries](#summaries)
-4. [Relationship Tables](#relationship-tables)
-   - [subscriptions](#subscriptions)
-   - [tags and content_tags](#tags-and-content_tags)
-   - [user_votes](#user_votes)
-   - [content_questions](#content_questions)
-   - [user_summary_history](#user_summary_history)
-5. [Utility Tables](#utility-tables)
-   - [daily_digest](#daily_digest)
-   - [cron_logs](#cron_logs)
-6. [Additional Optimizations](#additional-optimizations)
-   - [Indexes](#indexes)
-   - [Search Support](#search-support)
-7. [API Endpoints](#api-endpoints)
-8. [Design Decisions](#design-decisions)
-9. [Future Considerations](#future-considerations)
+   - Build each feature end-to-end (API route, service layer, UI component) so that every change is fully testable
 
----
+3. **Consistent Error Handling & Testing**
 
-## Schema Overview
+   - Use try/catch blocks, the AppError class, and logger consistently in API routes and service methods
+   - Write unit tests where possible (e.g., for URL parsing) and perform manual testing after each subtask
 
-Our database centers on a unified content model with clear separation of source metadata. Key points include:
+4. **Version Control & Code Reviews**
+   - Work on small feature branches, commit frequently with clear messages, and review code often to avoid regressions
 
-- **User Management:** Handled via Supabase Auth with extended metadata in the `profiles` table.
-- **Content & Source Metadata:** Videos and podcasts are stored in the unified `content` table. Channels (and optional RSS feeds) are stored separately.
-- **Summaries:** AI-generated summaries (short or detailed) are maintained in a dedicated table.
-- **User Interactions:** User history, subscriptions, votes, and Q&A interactions are captured for both tracking and discovery.
-- **System Operations:** Utility tables support background tasks and monitoring.
+# Phase 1: Supabase Integration & Database Setup
 
----
+## Step 1: Supabase Client & Environment Setup
 
-## Authentication
+### Tasks
 
-Authentication is managed by Supabase Auth. The `profiles` table extends Supabase user data by linking on the user's UUID.
+1. Create a new Supabase project (if not already done)
+2. In the project root, create or update the `.env.local` file:
 
-### profiles
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
 
-```sql
-CREATE TABLE profiles (
-  id uuid REFERENCES auth.users ON DELETE CASCADE,
-  name text,
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-  PRIMARY KEY (id)
-);
+3. Create a dedicated Supabase client file:
 
-COMMENT ON TABLE profiles IS 'Holds additional user metadata extending Supabase Auth';
+   ```typescript
+   // src/lib/utils/supabaseClient.ts
+   import { createClient } from '@supabase/supabase-js';
+
+   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+   export const supabase = createClient(supabaseUrl, supabaseKey);
+   ```
+
+4. Import this client into `DatabaseService.ts` and any other file that interacts with Supabase
+
+### Testing
+
+- Log the client instance in a temporary component to verify that the environment variables are loaded
+- Confirm in the Supabase dashboard that the project is active
+
+## Step 2: New Database Migration
+
+### Tasks
+
+Create a new migration file (using the Supabase CLI or Studio) that creates all required tables and RLS policies.
+
+#### Required Tables
+
+1. **profiles**
+
+   ```sql
+   CREATE TABLE profiles (
+     id uuid PRIMARY KEY,
+     name text,
+     created_at timestamp with time zone DEFAULT now() NOT NULL
+   );
+
+   CREATE POLICY "Profiles can be viewed/updated only by owner" ON profiles
+     FOR SELECT, UPDATE USING (auth.uid() = id);
+   ```
+
+2. **channels**
+
+   ```sql
+   CREATE TABLE channels (
+     id text PRIMARY KEY,
+     name text NOT NULL,
+     url text NOT NULL,
+     subscriber_count integer DEFAULT 0,
+     created_at timestamp with time zone DEFAULT now() NOT NULL
+   );
+
+   CREATE POLICY "Channels are public" ON channels FOR SELECT USING (true);
+   CREATE POLICY "Channels are insertable by authenticated users" ON channels
+     FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+   ```
+
+3. **videos**
+
+   ```sql
+   CREATE TABLE videos (
+     id text PRIMARY KEY,
+     channel_id text REFERENCES channels(id) ON DELETE CASCADE,
+     unique_identifier text UNIQUE NOT NULL,
+     title text NOT NULL,
+     url text NOT NULL,
+     transcript_path text NOT NULL,
+     language text NOT NULL DEFAULT 'en',
+     metadata jsonb,
+     published_at timestamp with time zone NOT NULL,
+     last_updated timestamp with time zone DEFAULT now() NOT NULL,
+     created_at timestamp with time zone DEFAULT now() NOT NULL
+   );
+
+   CREATE POLICY "Videos are public" ON videos FOR SELECT USING (true);
+   CREATE POLICY "Videos are insertable by authenticated users" ON videos
+     FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+   ```
+
+4. **user_summaries**
+
+   ```sql
+   CREATE TABLE user_summaries (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+     video_id text REFERENCES videos(id) ON DELETE CASCADE,
+     summary text NOT NULL,
+     detailed_summary text,
+     tags text[] NOT NULL DEFAULT '{}',
+     created_at timestamp with time zone DEFAULT now() NOT NULL,
+     updated_at timestamp with time zone DEFAULT now() NOT NULL
+   );
+
+   CREATE POLICY "Users can view/create/update their summaries" ON user_summaries
+     FOR SELECT, INSERT, UPDATE USING (auth.uid() = user_id);
+   ```
+
+5. **tags & content_tags**
+
+   ```sql
+   CREATE TABLE tags (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     name text UNIQUE NOT NULL
+   );
+
+   CREATE TABLE content_tags (
+     content_id text NOT NULL,
+     tag_id uuid REFERENCES tags(id) ON DELETE CASCADE,
+     content_type text NOT NULL CHECK (content_type IN ('video', 'summary')),
+     PRIMARY KEY (content_id, tag_id)
+   );
+
+   CREATE POLICY "Tags are public" ON tags FOR SELECT USING (true);
+   CREATE POLICY "Tags are insertable by authenticated users" ON tags
+     FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+   CREATE POLICY "Content tags are public" ON content_tags FOR SELECT USING (true);
+   CREATE POLICY "Content tags are insertable by authenticated users" ON content_tags
+     FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+   ```
+
+6. **subscriptions**
+
+   ```sql
+   CREATE TYPE subscription_type AS ENUM ('channel');
+
+   CREATE TABLE subscriptions (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+     subscription_type subscription_type NOT NULL,
+     subscription_id text NOT NULL,
+     created_at timestamp with time zone DEFAULT now() NOT NULL,
+     UNIQUE (user_id, subscription_type, subscription_id)
+   );
+
+   CREATE POLICY "Users can manage their subscriptions" ON subscriptions
+     FOR SELECT, INSERT, DELETE USING (auth.uid() = user_id);
+   ```
+
+7. **user_votes**
+
+   ```sql
+   CREATE TABLE user_votes (
+     user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+     channel_id text REFERENCES channels(id) ON DELETE CASCADE,
+     vote_type integer CHECK (vote_type IN (-1, 1)),
+     vote_time timestamp with time zone DEFAULT now() NOT NULL,
+     PRIMARY KEY (user_id, channel_id)
+   );
+
+   CREATE POLICY "Users can vote on channels" ON user_votes
+     FOR SELECT, INSERT, UPDATE USING (auth.uid() = user_id);
+   ```
+
+8. **content_questions**
+
+   ```sql
+   CREATE TABLE content_questions (
+     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+     user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+     content_id text NOT NULL,
+     question text NOT NULL,
+     response text,
+     created_at timestamp with time zone DEFAULT now() NOT NULL
+   );
+
+   CREATE POLICY "Users can view and create questions for content" ON content_questions
+     FOR SELECT, INSERT USING (auth.uid() = user_id);
+   ```
+
+Run the migration with the Supabase CLI:
+
+```bash
+supabase migration new create_current_schema
+supabase db push
 ```
 
-## Core Tables
+### Testing
 
-### channels
+- Use the Supabase dashboard to inspect tables and policies
+- (Optional) Manually insert and delete records in each table via the dashboard
 
-Stores channel details for both YouTube and podcast channels. A channel may optionally link to an RSS feed.
+## Step 3: Update DatabaseService.ts to Use Supabase
 
-```sql
-CREATE TABLE channels (
-  id text PRIMARY KEY, -- Channel ID (YouTube or podcast)
-  name text NOT NULL,
-  url text NOT NULL,
-  rss_feed_id uuid REFERENCES rss_feeds(id), -- Optional link to an RSS feed
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+### Tasks
 
-COMMENT ON TABLE channels IS 'Stores channel information for YouTube and podcast channels';
+1. For every method (e.g., `getProfile`, `upsertChannel`, `createVideo`, `updateVideo`, `getUserSummaries`, etc.), remove the in-memory logic and write Supabase queries
+2. Ensure Consistent Error Handling:
+   - Wrap every Supabase call in try/catch
+   - Log errors using the logger
+   - Re-throw errors as AppError (using ErrorCode and HttpStatus)
+
+Example:
+
+```typescript
+async findChannelById(id: string): Promise<ChannelRecord | null> {
+  try {
+    const { data, error } = await supabase
+      .from('channels')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      logger.error("Supabase error in findChannelById:", error, { channelId: id });
+      throw new AppError(
+        `Channel not found: ${error.message}`,
+        ErrorCode.STORAGE_FILE_NOT_FOUND,
+        HttpStatus.NOT_FOUND
+      );
+    }
+
+    return data;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.error("Unexpected error in findChannelById:", err, { channelId: id });
+    throw new AppError(
+      "An unexpected error occurred while fetching the channel.",
+      ErrorCode.API_SERVICE_UNAVAILABLE,
+      HttpStatus.INTERNAL_ERROR
+    );
+  }
+}
 ```
 
-### rss_feeds
+### Testing
 
-Stores RSS feed details for channels and podcasts.
+- Write temporary test functions for each method (e.g., call `upsertChannel`, then `findChannelById`, etc.) and check the Supabase dashboard for updates
 
-```sql
-CREATE TYPE feed_type AS ENUM ('youtube', 'podcast');
-
-CREATE TABLE rss_feeds (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  feed_url text UNIQUE NOT NULL,
-  feed_type feed_type NOT NULL,
-  name text NOT NULL,
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+## Step 4: Remove In-Memory Store Code
 
-COMMENT ON TABLE rss_feeds IS 'Stores RSS feed details for channels and podcasts';
-```
+### Tasks
 
-### content
+- Delete any in-memory store code and unused files once all DatabaseService methods work reliably with Supabase
 
-A unified table that stores both videos and podcast episodes. It uses a normalized unique_identifier to handle URL variations and prevent duplicates.
-
-```sql
-CREATE TABLE content (
-  id text PRIMARY KEY, -- Content ID (e.g., YouTube Video ID or Podcast Episode ID)
-  content_type text NOT NULL CHECK (content_type IN ('video', 'podcast')),
-  unique_identifier text UNIQUE NOT NULL, -- Normalized identifier from the URL
-  title text NOT NULL,
-  url text NOT NULL,
-  transcript text NOT NULL,
-  published_at timestamp with time zone NOT NULL, -- Original publish time from source
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL, -- Submission time on our platform
-  source_id text REFERENCES channels(id) -- Reference to the originating channel
-);
+### Testing
 
-COMMENT ON TABLE content IS 'Unified table storing videos and podcast episodes';
-```
-
-### summaries
-
-Stores AI-generated summaries for content items. Each summary row has a type (e.g., 'short' or 'detailed').
-
-```sql
-CREATE TABLE summaries (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  content_id text REFERENCES content(id) ON DELETE CASCADE,
-  summary text NOT NULL,
-  summary_type text NOT NULL CHECK (summary_type IN ('short', 'detailed')),
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+- Run the application and verify that all database operations succeed
 
-COMMENT ON TABLE summaries IS 'AI-generated summaries for content items with different types';
-```
+# Phase 2: Feature-by-Feature Implementation
 
-## Relationship Tables
+For every feature, build a vertical slice (API route → service layer → UI) with detailed API and error handling. Each feature is described below with concrete subtasks.
 
-### subscriptions
-
-Tracks user subscriptions to channels or RSS feeds using a polymorphic design.
+## Feature 1: Create Account & Persistent Login
 
-```sql
-CREATE TYPE subscription_type AS ENUM ('channel', 'feed');
+### Goal
 
-CREATE TABLE subscriptions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
-  subscription_type subscription_type NOT NULL,
-  subscription_id text NOT NULL, -- Channel ID (from channels) or Feed ID (from rss_feeds)
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-  UNIQUE (user_id, subscription_type, subscription_id)
-);
+Allow users to register, log in, and maintain session persistence.
 
-COMMENT ON TABLE subscriptions IS 'Tracks user subscriptions to channels or RSS feeds';
-```
+### Tasks
 
-### tags and content_tags
+1. **Integrate Supabase Auth UI**
 
-Used for tagging content items.
+   ```bash
+   npm install @supabase/auth-ui-react @supabase/auth-ui-shared
+   ```
 
-```sql
-CREATE TABLE tags (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text UNIQUE NOT NULL
-);
+   Create an authentication page:
 
-CREATE TABLE content_tags (
-  content_id text NOT NULL, -- References content.id
-  tag_id uuid REFERENCES tags(id) ON DELETE CASCADE,
-  PRIMARY KEY (content_id, tag_id)
-);
+   ```typescript
+   // src/app/auth/page.tsx
+   'use client';
+   import { Auth } from '@supabase/auth-ui-react';
+   import { ThemeSupa } from '@supabase/auth-ui-shared';
+   import { supabase } from '@/lib/utils/supabaseClient';
 
-COMMENT ON TABLE content_tags IS 'Associates tags with content items';
-```
+   export default function AuthPage() {
+     return (
+       <div className='flex items-center justify-center min-h-screen bg-gray-100'>
+         <Auth supabaseClient={supabase} appearance={{ theme: ThemeSupa }} providers={[]} />
+       </div>
+     );
+   }
+   ```
 
-### user_votes
+2. **Create an AuthContext**
 
-Records user upvotes/downvotes on channels. (For simplicity, votes are only at the channel level per your user stories.)
+   - Build `src/lib/contexts/AuthContext.tsx` to store user state
+   - Use Supabase's `auth.onAuthStateChange` to update the user
+   - Provide helper functions for login, logout, and accessing the current user
 
-```sql
-CREATE TABLE user_votes (
-  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
-  channel_id text REFERENCES channels(id) ON DELETE CASCADE,
-  vote_type integer CHECK (vote_type IN (-1, 1)), -- -1 for downvote, 1 for upvote
-  vote_time timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-  PRIMARY KEY (user_id, channel_id)
-);
+3. **Secure API Routes**
 
-COMMENT ON TABLE user_votes IS 'Tracks user votes on channels for ranking and trending analysis';
-```
+   - Extract and verify JWT from request headers:
+     ```typescript
+     const token = req.headers.get('authorization');
+     const {
+       data: { user },
+     } = await supabase.auth.getUser(token);
+     ```
+   - Pass the authenticated user ID to DatabaseService calls
 
-### content_questions
+4. **Create a Profile on Signup**
 
-Stores Q&A interactions for a content item (video or podcast). For now, we handle one-off questions; threaded conversations can be added later if needed.
+   - After user signs up, check if their profile exists
+   - If not, insert one into the profiles table using DatabaseService
 
-```sql
-CREATE TABLE content_questions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
-  content_id text NOT NULL, -- References content.id
-  question text NOT NULL,
-  response text, -- AI or moderator response
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+5. **Update RLS Policies**
 
-COMMENT ON TABLE content_questions IS 'Records Q&A interactions for content items';
-```
+   - Ensure the migration file includes policies that restrict data access based on `auth.uid()`
 
-### user_summary_history
+6. **UI Adjustments**
+   - Update the Navigation component to show "Login/Signup" when logged out
+   - Show "Logout" and user info when logged in
+   - Add a logout button that calls the AuthContext's logout method
 
-Tracks each instance when a user generates or accesses a summary, enabling a "My Summaries" feed.
+### Testing
 
-```sql
-CREATE TABLE user_summary_history (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
-  content_id text REFERENCES content(id) ON DELETE CASCADE,
-  summary_id uuid REFERENCES summaries(id) ON DELETE CASCADE,
-  generated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+- Register a new user, log in, and verify session persistence
+- Confirm the user's profile is created in the Supabase dashboard
+- Ensure API routes only operate on the logged-in user's data
 
-COMMENT ON TABLE user_summary_history IS 'Tracks each summary request by a user for content items';
-```
+## Feature 2: Submit YouTube/Podcast Link & Generate Summary
 
-## Utility Tables
+### Goal
 
-### daily_digest
+Allow users to submit a link, generate (or retrieve an existing) summary, and display video metadata.
 
-Stores the content (as JSON) for daily email digests. Cron jobs update this table.
+### Tasks
 
-```sql
-CREATE TABLE daily_digest (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
-  email_sent boolean DEFAULT false,
-  digest_content jsonb, -- Digest email content
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+1. **API Route: /api/videos/process**
 
-COMMENT ON TABLE daily_digest IS 'Tracks daily email notifications and stores digest content';
-```
+   - Validate input using Zod
+   - Use the extractVideoInfo utility to get the video ID
+   - Call the VideoProcessingService to:
+     - Check if the video exists
+     - Fetch metadata from the YouTube oEmbed endpoint
+     - Generate a summary via the OpenAI service
+     - Save or update records in the videos and user_summaries tables
+   - Return a JSON response:
+     ```typescript
+     {
+       "data": {
+         "videoId": "...",
+         "summary": "...",
+         "videoData": { ... }
+       }
+     }
+     ```
+   - Use try…catch and proper error handling
 
-### cron_logs
+2. **VideoProcessingService**
 
-Logs the execution of scheduled background tasks for debugging and monitoring.
+   - Remove any in-memory logic
+   - Use DatabaseService methods (`findVideoRecord`, `createVideoRecord`, etc.)
+   - Integrate with the oEmbed endpoint to populate title, channel name, etc.
 
-```sql
-CREATE TABLE cron_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_name text NOT NULL,
-  status text CHECK (status IN ('success', 'failed')),
-  message text,
-  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+3. **UI (LinkInput & SummaryCard)**
+   - On the home page, the LinkInput component should send the URL to `/api/videos/process`
+   - Upon successful submission, display a new SummaryCard with:
+     - Title, channel name, creation date, subscribe button, and tags
+   - If the video already has a summary, re-use it
 
-COMMENT ON TABLE cron_logs IS 'Logs for monitoring scheduled task execution';
-```
+### Testing
 
-## Additional Optimizations
+- Submit valid and invalid YouTube URLs
+- Test various formats (youtu.be, /watch, /shorts, etc.)
+- Verify new records in Supabase
+- Verify that duplicate submissions reuse existing summaries
 
-### Indexes
+## Feature 3: View and Customize Summary
 
-To keep queries fast even as data grows, add these indexes:
+### Goal
 
-#### content:
+Allow users to toggle between the default summary and a detailed (or shorter) version.
 
-```sql
-CREATE INDEX idx_content_unique_identifier ON content(unique_identifier);
-CREATE INDEX idx_content_source_id ON content(source_id);
-```
+### Tasks
 
-#### summaries:
+1. **API Endpoints**
 
-```sql
-CREATE INDEX idx_summaries_content_id ON summaries(content_id);
-```
+   - `/api/openai/summarize`:
+     - Validate input and call OpenAI to generate a detailed summary
+   - `/api/videos/summaries/update`:
+     - Update the `detailed_summary` field in the user_summaries table
 
-#### subscriptions:
+2. **SummaryCard Component**
+   - Add a toggle button ("Show Detailed Summary" / "Show Brief Summary")
+   - When clicked:
+     - If `detailed_summary` exists in the database, display it
+     - Otherwise, call `/api/openai/summarize` to generate one
+     - Then call `/api/videos/summaries/update` to persist it
+   - Use a loading state during API calls
 
-```sql
-CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
-CREATE INDEX idx_subscriptions_type_id ON subscriptions(subscription_type, subscription_id);
-```
+### Testing
 
-#### user_summary_history:
+- Generate a summary, click the toggle, verify detailed summary appears
+- Refresh the page to ensure the detailed summary is loaded from Supabase
 
-```sql
-CREATE INDEX idx_user_summary_history_user_id ON user_summary_history(user_id);
-CREATE INDEX idx_user_summary_history_content_id ON user_summary_history(content_id);
-```
+## Feature 4: Interactive Q&A with Summary
 
-#### user_votes:
+### Goal
 
-```sql
-CREATE INDEX idx_user_votes_channel_id ON user_votes(channel_id);
-```
+Allow users to ask questions directly on the summary card and receive answers from an integrated LLM.
 
-#### content_questions:
+### Tasks
 
-```sql
-CREATE INDEX idx_content_questions_content_id ON content_questions(content_id);
-```
+1. **API Endpoint: /api/content-questions**
 
-### Search Support
+   - Validate the incoming request with Zod
+   - Use the integrated `/api/openai/chat` route
+   - Send the summary plus question as context
+   - Save the question and response in the content_questions table
+   - Return the response to the client
 
-For the search page (user story #11), add full-text search support to the content table:
+2. **SummaryCard Component**
+   - Add an input field below the summary for entering a question
+   - Show a loading indicator during API call
+   - Display the AI's response inline once received
 
-1. Add a tsvector Column:
+### Testing
 
-```sql
-ALTER TABLE content ADD COLUMN search_vector tsvector;
-```
+- Ask a relevant question on a summary card
+- Verify the answer is displayed
+- Verify question/response pair is saved in the database
 
-2. Create a Trigger to Update the Column:
+## Feature 5: Dashboard & Feed
 
-```sql
-CREATE OR REPLACE FUNCTION content_search_vector_update()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.search_vector :=
-    setweight(to_tsvector('english', coalesce(NEW.title, '')), 'A') ||
-    setweight(to_tsvector('english', coalesce(NEW.transcript, '')), 'B') ||
-    setweight(to_tsvector('english', coalesce((SELECT string_agg(name, ' ')
-        FROM tags
-        INNER JOIN content_tags ON tags.id = content_tags.tag_id
-        WHERE content_tags.content_id = NEW.id), '')), 'C');
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+### Goal
 
-CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
-ON content FOR EACH ROW EXECUTE PROCEDURE content_search_vector_update();
-```
+Provide a top-level page where users can submit new links and view a feed of their summaries and those from subscribed channels.
 
-3. Create a GIN Index:
+### Tasks
 
-```sql
-CREATE INDEX content_search_vector_idx ON content USING gin(search_vector);
-```
+1. **Home Page Update (src/app/page.tsx)**
 
-## API Endpoints
+   - Ensure the top section contains the LinkInput component
+   - Fetch a feed of summaries from `/api/videos/summaries`
 
-Below is an updated outline of API endpoints. The endpoints address the core user stories while keeping the design simple:
+2. **API Endpoint: /api/videos/summaries (GET)**
 
-1. **User Authentication** (Handled by Supabase Auth)
+   - Query the user_summaries table, joining with videos for metadata
+   - Return a list of summaries as `{ data: [...] }`
 
-   - POST /auth/login
-   - POST /auth/register
+3. **Client Data Fetching**
+   - For server components, use Next.js server-side data fetching
+   - For client-side, use SWR or React Query
+   - Display a loading component while fetching
 
-2. **Content Submission & Retrieval**
+### Testing
 
-   - POST /content
-     - Purpose: Submit a new video or podcast link.
-     - Flow:
-       1. Normalize the URL to a unique_identifier.
-       2. Check for an existing record.
-       3. If found, return the existing content_id and summaries; otherwise, insert a new record.
-     - Input: { url: string }
-     - Output: { content_id: string, existing: boolean }
-   - GET /content/:id
-     - Purpose: Retrieve a specific content item (including its summaries).
-   - GET /content?url=…
-     - Alternative: Retrieve content by URL.
+- Generate several summaries
+- Navigate to `/summaries` and verify feed displays correctly
+- Test refresh and error states
 
-3. **Summary Generation & Retrieval**
+## Feature 6: Channel Discovery & Ranking
 
-   - POST /summaries
-     - Purpose: Generate and store a summary for a content item.
-     - Input: { content_id: string, summary_type: string }
-     - Note: Check for an existing summary before generating a new one (to save LLM/API costs).
-   - GET /summaries/:content_id
-     - Purpose: Fetch summaries for a given content item.
+### Goal
 
-4. **User Summary History**
+Allow users to view popular channels, subscribe to them, and vote to affect ranking.
 
-   - POST /user-summary-history
-     - Purpose: Record a summary generation event.
-   - GET /user-summary-history/:user_id
-     - Purpose: Retrieve a user's summary history (join with content and summaries for details).
+### Tasks
 
-5. **Subscriptions**
+1. **API Endpoints**
 
-   - POST /subscribe
-     - Purpose: Subscribe a user to a channel or RSS feed.
-   - GET /subscriptions/:user_id
-     - Purpose: Retrieve a user's subscriptions.
+   - `/api/channels/:id`: Retrieve channel details
+   - `/api/channels/popular`: Query channels ordered by popularity metrics
+   - `/api/vote`: Record upvotes/downvotes in the user_votes table
+   - `/api/subscriptions`: Handle subscribing and unsubscribing
 
-6. **Channel Voting (Trending Support)**
+2. **UI Updates**
 
-   - POST /vote
-     - Purpose: Record an upvote or downvote on a channel.
-     - Note: For simplicity, trending channels can be determined dynamically (e.g., count of upvotes).
+   - Add "Subscribe" button to SummaryCard next to channel name
+   - Create channels page (`src/app/channels/page.tsx`)
+   - Add voting controls (thumbs up/down icons)
 
-7. **Content Q&A**
+3. **DatabaseService Updates**
+   - Add methods for recording votes and computing channel popularity
 
-   - POST /content-questions
-     - Purpose: Record a question (and optional response) for a content item.
-     - (Optional for future improvement: a GET endpoint to retrieve full Q&A threads.)
+### Testing
 
-8. **Channel Details & Popular Channels**
+- Vote on channels and verify changes in user_votes table
+- Confirm popular channels page shows correct ordering
+- Test subscription add/remove flows
 
-   - GET /channels/:id
-     - Purpose: Retrieve channel details (to display channel name on summary cards).
-   - GET /popular-channels
-     - Purpose: Retrieve a list of popular channels (computed dynamically by subscriber count or upvotes).
+## Feature 7: Tags & Search Functionality
 
-9. **Tags**
+### Goal
 
-   - GET /tags
-     - Purpose: Retrieve available tags for use in search or autocomplete features.
+Enable users to see tags on summary cards, click them to view related content, and perform dedicated searches.
 
-10. **Search**
-    - GET /search?q=…
-      - Purpose: Search for content based on keywords (utilizing the full-text search on content.search_vector).
+### Tasks
 
-## Design Decisions
+1. **Tag Handling during Summary Creation**
 
-1. **Unified Content & Source Metadata:**
+   - Extract and generate tags during summary creation
+   - Check/create tags in the tags table
+   - Insert associations into the content_tags table
 
-   - Combining videos and podcasts into one table simplifies the "My Summaries" feed.
-   - Source metadata is separated into channels and optional RSS feeds.
+2. **SummaryCard UI**
 
-2. **Duplicate Prevention:**
+   - Display tags prominently
+   - Make tags clickable for filtered search
 
-   - The unique_identifier (with a UNIQUE constraint and an index) ensures duplicate submissions are avoided.
+3. **Search Page (src/app/search/page.tsx)**
+   - Create search input for keywords
+   - Query database for matching summaries/videos
+   - Display search suggestions from existing tags
+   - Show results using SummaryCard component
 
-3. **Cost Efficiency:**
+### Testing
 
-   - Before generating a new summary, check for an existing one to avoid extra LLM/API calls.
+- Verify tag navigation works
+- Test keyword searches
+- Validate search result relevance
 
-4. **User Interactions:**
+## Feature 8: Automated Content Updates & Notifications
 
-   - User history, subscriptions, and votes are tracked to support personalized feeds and popular channels.
+### Goal
 
-5. **Search & Discovery:**
-   - A full-text search mechanism (using tsvector and a trigger) supports efficient search without adding undue complexity.
+Periodically check for new content and send daily email digests.
 
-## Future Considerations
+### Tasks
 
-- **Threaded Q&A:**
-  Consider adding a self-referencing column (e.g., parent_question_id) to support conversation threads.
+1. **Automated Content Update Script**
 
-- **Content Votes:**
-  Although not required by current user stories, a dedicated table for content votes could be added later if content-level ranking is needed.
+   ```typescript
+   // scripts/update-content.ts
+   ```
 
-- **Dedicated Trending Calculation:**
-  For more advanced "Popular Channels" features, a pre-calculated table (updated via a cron job) might be considered.
+   - Iterate over channels in database
+   - Check for new content using YouTube APIs/RSS feeds
+   - Trigger summary generation for new content
+   - Schedule using cron jobs or serverless functions
 
-- **Rate Limiting & Security:**
-  While Supabase Auth provides basic security, consider adding rate limiting (especially on summary generation) to manage costs and abuse.
+2. **Email Notifications**
+   - Integrate email provider (e.g., SendGrid)
+   - Create `/api/notifications/daily` endpoint
+   - Generate and send digest emails
+   - Track sent emails in daily_digest table
+
+### Testing
+
+- Run update script manually
+- Verify new video detection
+- Test email generation and sending
+- Verify cron job execution
+
+# Best Practices & Reminders
+
+1. **Supabase Client**
+
+   - Always import from `src/lib/utils/supabaseClient.ts`
+
+2. **Error Handling**
+
+   - Use try/catch in API routes and DatabaseService
+   - Log errors with logger
+   - Re-throw as AppError with appropriate codes
+
+3. **API Route Structure**
+
+   - Validate input using Zod
+   - Call service functions
+   - Return `{ data: ... }` or `{ error: ... }`
+
+4. **Data Fetching**
+
+   - Prefer server components when possible
+   - Benefit from SSR and caching
+
+5. **Authentication**
+
+   - Use `@supabase/auth-ui-react` for UI
+   - Build AuthContext
+   - Verify JWT in API routes
+
+6. **RLS Policies**
+
+   - Define policies for all tables in migration file
+
+7. **Testing**
+
+   - Write unit tests (Jest)
+   - Test features manually
+   - Check Supabase dashboard
+
+8. **Version Control**
+   - Use small, incremental commits
+   - Write clear commit messages
+   - Work on feature branches
+
+By following this comprehensive plan—with concrete API examples, detailed sub-tasks for each feature, and explicit testing checkpoints—you ensure that every piece of the project is built in a maintainable, consistent, and testable manner. This plan now covers all eight features (including channel discovery, tag-based search, and automated updates/notifications) in full detail so that even a junior developer can follow along without missing critical elements.
