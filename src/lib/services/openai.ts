@@ -79,7 +79,7 @@ export class OpenAIService {
     let currentChunk = "";
 
     const sentences = transcript.split(/(?<=[.!?])\s+/);
-    
+
     for (const sentence of sentences) {
       if (currentChunk.length + sentence.length > MAX_CHUNK_LENGTH) {
         chunks.push(currentChunk.trim());
@@ -97,9 +97,9 @@ export class OpenAIService {
   }
 
   private async generateChunkSummary(chunk: string): Promise<string> {
-    const response = await retryApi(() => 
+    const response = await retryApi(() =>
       this.client.chat.completions.create({
-        model: "gpt-4-turbo",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -121,7 +121,7 @@ export class OpenAIService {
   private async generateFinalSummary(combinedSummaries: string): Promise<string> {
     const response = await retryApi(() =>
       this.client.chat.completions.create({
-        model: "gpt-3.5-turbo-0125",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -144,7 +144,7 @@ export class OpenAIService {
     try {
       const response = await retryApi(() =>
         this.client.chat.completions.create({
-          model: "gpt-3.5-turbo-0125",
+          model: "gpt-4o-mini",
           messages: [
             {
               role: "system",
@@ -170,12 +170,12 @@ export class OpenAIService {
 
       return tags.length === 10 ? tags : [
         ...tags,
-        ...['Technology', 'Innovation', 'Education', 'Development', 'Business', 
+        ...['Technology', 'Innovation', 'Education', 'Development', 'Business',
             'Strategy', 'Growth', 'Success', 'Future', 'Insights'].slice(0, 10 - tags.length)
       ];
     } catch (error) {
       console.error("Error generating tags:", error);
-      return ['Technology', 'Innovation', 'Education', 'Development', 'Business', 
+      return ['Technology', 'Innovation', 'Education', 'Development', 'Business',
               'Strategy', 'Growth', 'Success', 'Future', 'Insights'];
     }
   }
@@ -191,7 +191,7 @@ export class OpenAIService {
     options: Partial<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming> = {}
   ): Promise<OpenAI.Chat.ChatCompletion> {
     const defaultOptions: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
-      model: "gpt-3.5-turbo-0125",
+      model: "gpt-4o-mini",
       temperature: 0.3,
       max_tokens: 1000,
       messages,
@@ -250,4 +250,4 @@ export class OpenAIService {
       );
     }
   }
-} 
+}

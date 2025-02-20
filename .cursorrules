@@ -42,32 +42,33 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 
 # Project Rules
 
-1. **Code Style & Consistency**  
-   • Use Prettier, ESLint, and TypeScript's strict mode for consistency.  
+1. **Code Style & Consistency**
+   • Use Prettier, ESLint, and TypeScript's strict mode for consistency.
    • Follow consistent naming conventions (camelCase for variables, PascalCase for React components).
 
-2. **Modularity & Separation of Concerns**  
-   • All business logic must reside in the `src/lib/` directory (services, utils, contexts, and types).  
+2. **Modularity & Separation of Concerns**
+   • All business logic must reside in the `src/lib/` directory (services, utils, contexts, and types).
    • API endpoints (in `src/app/api/`) must wrap business logic in try/catch blocks and use the custom `AppError` class for errors.
 
-3. **API Contract & Error Handling**  
-   • All endpoints return a JSON with either a `{ data: ... }` or an `{ error: ... }` structure.  
+3. **API Contract & Error Handling**
+   • All endpoints return a JSON with either a `{ data: ... }` or an `{ error: ... }` structure.
    • Validate request data using Zod schemas before processing.
 
-4. **Testing & Documentation**  
-   • Document inline with JSDoc comments for functions and services.  
+4. **Testing & Documentation**
+   • Document inline with JSDoc comments for functions and services.
    • Write unit and integration tests for core services (e.g., video processing, AI integrations).
 
-5. **Feature Parity & Minimal Disruption**  
-   • Do not change the core functionalities (video processing, transcript storage, summary generation) during refactoring.  
+5. **Feature Parity & Minimal Disruption**
+   • Do not change the core functionalities (video processing, transcript storage, summary generation) during refactoring.
    • Maintain an "anonymous" user model for now and document where a persistent user system would be integrated later.
 
-6. **Logging & Debugging**  
-   • Use the provided `logger` utility consistently.  
+6. **Logging & Debugging**
+   • Use the provided `logger` utility consistently.
    • Log context and errors in each service to aid debugging and future enhancements.
 
 # Lessons
 
+0. The db schema is in the `documents/tables.md` file. This is the source of truth for the db schema.
 1. When using OpenAI SDK, use the SDK types directly instead of creating custom types
 2. For retry mechanisms, create specialized retry functions for different API calls
 3. Keep error handling consistent across the codebase
@@ -98,4 +99,3 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 28. Use anonymous IDs for unauthenticated operations to simplify development
 
 # Scratchpad
-
