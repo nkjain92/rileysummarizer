@@ -11,10 +11,29 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const routeLogger = logger.withContext({ route: 'api/videos/summaries' });
 
   try {
+    routeLogger.info('Fetching user summaries');
     const db = new DatabaseService('Summaries');
     const summaries = await db.getUserSummaries('anonymous');
+    const videos = await Promise.all(
+      summaries.map(async (summary) => {
+        const video = await db.findVideoById(summary.video_id);
+        return {
+          ...summary,
+          videos: {
+            title: video?.title || 'Unknown Title',
+            url: video?.url || '',
+            channel: { name: 'Anonymous Channel' }
+          },
+          created_at: summary.created_at || new Date().toISOString()
+        };
+      })
+    );
 
-    return NextResponse.json({ data: summaries });
+    routeLogger.info('Successfully fetched summaries', { 
+      count: videos.length 
+    });
+
+    return NextResponse.json({ data: videos });
   } catch (error) {
     if (error instanceof AppError) {
       routeLogger.error('Application error while fetching summaries', error);
@@ -23,7 +42,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         { status: error.statusCode }
       );
     }
-
+    
     routeLogger.error('Unexpected error while fetching summaries', error as Error);
     const appError = new AppError(
       "Failed to fetch summaries",
@@ -36,4 +55,4 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       { status: appError.statusCode }
     );
   }
-}
+} 

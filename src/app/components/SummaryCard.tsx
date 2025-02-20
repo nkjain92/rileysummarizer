@@ -7,7 +7,7 @@ import { ToastVariant } from '@/lib/types/toast';
 
 interface SummaryCardProps {
   title: string;
-  channelName?: string | null;
+  channelName: string;
   date: string;
   summary: string;
   videoUrl: string;
@@ -17,7 +17,7 @@ interface SummaryCardProps {
 
 export default function SummaryCard({
   title,
-  channelName = 'Unknown Channel',
+  channelName,
   date,
   summary,
   videoUrl,
@@ -32,21 +32,18 @@ export default function SummaryCard({
   // Function to process summary text and ensure proper bullet point formatting
   const formatSummary = (text: string): string => {
     // Split into lines and process each line
-    return text
-      .split('\n')
-      .map(line => {
-        // If line starts with a dash or asterisk, convert to proper markdown bullet
-        line = line.trim();
-        if (line.startsWith('- ') || line.startsWith('* ')) {
-          return line;
-        }
-        // If line starts with a number followed by a period (e.g., "1."), convert to bullet
-        if (/^\d+\.\s/.test(line)) {
-          return `- ${line.replace(/^\d+\.\s/, '')}`;
-        }
+    return text.split('\n').map(line => {
+      // If line starts with a dash or asterisk, convert to proper markdown bullet
+      line = line.trim();
+      if (line.startsWith('- ') || line.startsWith('* ')) {
         return line;
-      })
-      .join('\n');
+      }
+      // If line starts with a number followed by a period (e.g., "1."), convert to bullet
+      if (/^\d+\.\s/.test(line)) {
+        return `- ${line.replace(/^\d+\.\s/, '')}`;
+      }
+      return line;
+    }).join('\n');
   };
 
   const handleGetDetailedSummary = async () => {
@@ -65,9 +62,9 @@ export default function SummaryCard({
         body: JSON.stringify({
           text: summary,
           options: {
-            format: 'paragraph',
+            format: "paragraph",
             maxLength: 2000,
-          },
+          }
         }),
       });
 
@@ -77,7 +74,7 @@ export default function SummaryCard({
       }
 
       const { data } = await response.json();
-
+      
       fetch('/api/videos/summaries/update', {
         method: 'PUT',
         headers: {
@@ -147,7 +144,9 @@ export default function SummaryCard({
                   p: ({ children }) => (
                     <p className='text-gray-600 leading-relaxed mb-4'>{children}</p>
                   ),
-                  ul: ({ children }) => <ul className='space-y-2 my-4 list-none'>{children}</ul>,
+                  ul: ({ children }) => (
+                    <ul className='space-y-2 my-4 list-none'>{children}</ul>
+                  ),
                   li: ({ children }) => (
                     <li className='flex items-start space-x-2 text-gray-600'>
                       <span className='text-purple-600 mt-1.5 min-w-[1.5rem] text-center'>•</span>
@@ -172,7 +171,8 @@ export default function SummaryCard({
               {tags.map(tag => (
                 <span
                   key={tag}
-                  className='px-3 py-1 text-sm rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors'>
+                  className='px-3 py-1 text-sm rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors'
+                >
                   #{tag}
                 </span>
               ))}

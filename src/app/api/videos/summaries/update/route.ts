@@ -16,12 +16,17 @@ const updateSummarySchema = z.object({
  */
 export async function PUT(req: NextRequest): Promise<NextResponse> {
   const routeLogger = logger.withContext({ route: 'api/videos/summaries/update' });
-
+  
   try {
+    routeLogger.info('Updating video summary');
     const body = await req.json();
+    
+    routeLogger.info('Validating request body', { body });
     const result = updateSummarySchema.safeParse(body);
-
     if (!result.success) {
+      routeLogger.warn('Invalid request data', { 
+        errors: result.error.format() 
+      });
       throw new AppError(
         "Invalid request data",
         ErrorCode.VALIDATION_INVALID_FORMAT,
@@ -45,8 +50,12 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
     }
 
     // Update the summary
-    const updatedSummary = await db.updateSummary(summary.id, {
+    const updatedSummary = await db.updateUserSummary(summary.id, {
       detailed_summary,
+    });
+
+    routeLogger.info('Successfully updated summary', { 
+      summaryId: updatedSummary.id 
     });
 
     return NextResponse.json({ data: updatedSummary });
@@ -58,7 +67,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
         { status: error.statusCode }
       );
     }
-
+    
     routeLogger.error('Unexpected error while updating summary', error as Error);
     const appError = new AppError(
       "Failed to update summary",
@@ -71,4 +80,4 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       { status: appError.statusCode }
     );
   }
-}
+} 

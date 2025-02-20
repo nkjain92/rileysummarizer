@@ -1,136 +1,126 @@
-import { NextRequest } from 'next/server';
-import { OpenAIService } from '@/lib/services/openai';
-import { DatabaseService } from '@/lib/services/DatabaseService';
-import { extractVideoInfo, fetchTranscript } from '@/lib/utils/youtube';
-import { AppError, ErrorCode, HttpStatus } from '@/lib/types/errors';
-import { logger } from '@/lib/utils/logger';
-import { createServerSupabaseClient } from '@/lib/utils/supabaseServer';
-import { TagRecord } from '@/lib/types/database';
+import { NextRequest, NextResponse } from "next/server";
+import { OpenAIService } from "@/lib/services/openai";
+import { AppError, ErrorCode, HttpStatus } from "@/lib/types/errors";
+import { z } from "zod";
+import { logger } from "@/lib/utils/logger";
+import { DatabaseService } from "@/lib/services/DatabaseService";
 
-export async function POST(req: NextRequest) {
+// Request validation schema
+const processVideoSchema = z.object({
+  url: z.string().url(),
+  detailed_summary: z.string().optional(),
+});
+
+/**
+ * Process a video URL
+ * POST /api/videos/process
+ */
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  const routeLogger = logger.withContext({ route: 'api/videos/process' });
+  
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new AppError('Missing auth token', ErrorCode.UNAUTHORIZED, HttpStatus.UNAUTHORIZED);
-    }
-
-    // Create Supabase client
-    const supabase = createServerSupabaseClient();
-
-    // Get authenticated user using getUser() for security
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(authHeader.split(' ')[1]);
-
-    if (userError || !user) {
-      throw new AppError(
-        userError?.message || 'Invalid session',
-        ErrorCode.UNAUTHORIZED,
-        HttpStatus.UNAUTHORIZED
-      );
-    }
-
-    // Parse request body
+    routeLogger.info('Processing video request');
     const body = await req.json();
-    const { url } = body;
-
-    if (!url) {
-      throw new AppError('URL is required', ErrorCode.INVALID_INPUT, HttpStatus.BAD_REQUEST);
-    }
-
-    // Extract video info and fetch transcript
-    const videoInfo = await extractVideoInfo(url);
-    const transcript = await fetchTranscript(videoInfo.videoId);
-
-    // Initialize services
-    const openai = new OpenAIService();
-    const db = new DatabaseService('video-process');
-
-    // Create or get anonymous channel
-    const anonymousChannel = await db.findOrCreateChannel({
-      id: 'anonymous',
-      name: 'Anonymous',
-      url: 'https://example.com',
-      subscriber_count: 0
-    });
-
-    // Find or create content
-    const content = await db.createContent({
-      id: videoInfo.videoId,
-      content_type: 'video',
-      unique_identifier: videoInfo.videoId,
-      title: videoInfo.title,
-      url: url,
-      transcript: transcript,
-      published_at: new Date().toISOString(),
-      source_id: 'anonymous',
-      search_vector: null
-    });
-
-    // Check if we already have a summary
-    const existingSummary = await db.findSummaryByContentId(content.id);
-    if (existingSummary) {
-      // Create user summary history
-      await db.createUserSummaryHistory(user.id, content.id, existingSummary.id);
-      return Response.json({ data: existingSummary });
-    }
-
-    // Process video with OpenAI
-    const processedVideo = await openai.processYouTubeVideo(url);
-
-    // Create summary (brief version)
-    const summary = await db.createSummary({
-      content_id: content.id,
-      summary: processedVideo.summary,
-      summary_type: 'short'
-    });
-
-    // Create tags
-    const tagPromises = processedVideo.tags.map(tagName =>
-      db.findOrCreateTag({
-        name: tagName,
-      })
-    );
-    const tags: TagRecord[] = await Promise.all(tagPromises);
-
-    // Add content tags
-    await db.addContentTags(
-      content.id,
-      tags.map(tag => tag.id)
-    );
-
-    // Create user summary history
-    await db.createUserSummaryHistory(user.id, content.id, summary.id);
-
-    // Return the response
-    return Response.json({
-      data: {
-        ...summary,
-        content: {
-          ...content,
-        },
-        tags: tags.map(tag => tag.name),
-      },
-    });
-  } catch (error) {
-    logger.error('Error processing video:', error as Error);
-
-    if (error instanceof AppError) {
-      return Response.json(
-        { error: { message: error.message, code: error.code } },
-        { status: error.statusCode },
+    
+    routeLogger.info('Validating request body', { body });
+    const result = processVideoSchema.safeParse(body);
+    if (!result.success) {
+      routeLogger.warn('Invalid request data', { 
+        errors: result.error.format() 
+      });
+      throw new AppError(
+        "Invalid request data",
+        ErrorCode.VALIDATION_INVALID_FORMAT,
+        HttpStatus.BAD_REQUEST,
+        { details: result.error.format() }
       );
     }
 
-    return Response.json(
-      {
-        error: {
-          message: 'An unexpected error occurred',
-          code: ErrorCode.UNKNOWN_ERROR,
+    // Process video using OpenAI service
+    routeLogger.info('Processing video', { url: result.data.url });
+    const openai = new OpenAIService();
+    const videoSummary = await openai.processYouTubeVideo(result.data.url);
+
+    // Get video metadata from YouTube oEmbed
+    const oembedResponse = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(result.data.url)}&format=json`
+    );
+    if (!oembedResponse.ok) {
+      throw new AppError(
+        "Failed to fetch video metadata",
+        ErrorCode.API_SERVICE_UNAVAILABLE,
+        HttpStatus.INTERNAL_ERROR
+      );
+    }
+    const videoData = await oembedResponse.json();
+
+    // Store the summary in the database
+    const db = new DatabaseService('VideoProcessing');
+    
+    // Create or update channel
+    const channelId = videoSummary.channelId || 'anonymous';
+    await db.upsertChannel({
+      id: channelId,
+      name: videoData.author_name || 'Unknown Channel',
+      url: videoData.author_url || '',
+      subscriber_count: 0,
+    });
+
+    // Create video record if it doesn't exist
+    const existingVideo = await db.findVideoById(videoSummary.videoId);
+    if (!existingVideo) {
+      await db.createVideo({
+        id: videoSummary.videoId,
+        channel_id: channelId,
+        unique_identifier: videoSummary.videoId,
+        title: videoData.title || 'Unknown',
+        url: result.data.url,
+        transcript_path: `transcripts/${videoSummary.videoId}.json`,
+        language: 'en',
+        metadata: {
+          author_name: videoData.author_name,
+          author_url: videoData.author_url,
+          thumbnail_url: videoData.thumbnail_url
         },
-      },
-      { status: HttpStatus.INTERNAL_ERROR },
+        published_at: new Date().toISOString(),
+        last_updated: new Date().toISOString(),
+      });
+    }
+
+    // Create the summary
+    const summary = await db.createUserSummary({
+      user_id: 'anonymous',
+      video_id: videoSummary.videoId,
+      summary: videoSummary.summary,
+      detailed_summary: result.data.detailed_summary || videoSummary.detailed_summary,
+      tags: videoSummary.tags,
+    });
+
+    routeLogger.info('Video processed successfully', { 
+      summaryId: summary.id,
+      videoId: videoSummary.videoId 
+    });
+
+    return NextResponse.json({ data: summary });
+  } catch (error) {
+    if (error instanceof AppError) {
+      routeLogger.error('Application error while processing video', error);
+      return NextResponse.json(
+        { error: error.toResponse() },
+        { status: error.statusCode }
+      );
+    }
+    
+    routeLogger.error('Unexpected error while processing video', error as Error);
+    const appError = new AppError(
+      "Failed to process video",
+      ErrorCode.API_SERVICE_UNAVAILABLE,
+      HttpStatus.INTERNAL_ERROR,
+      { details: error }
+    );
+    return NextResponse.json(
+      { error: appError.toResponse() },
+      { status: appError.statusCode }
     );
   }
-}
+} 

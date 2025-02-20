@@ -1,25 +1,41 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Navigation from './components/Navigation';
 import LinkInput from './components/LinkInput';
 import SummaryCard from './components/SummaryCard';
 import LoadingCard from './components/LoadingCard';
 import { ToastContainer } from '@/components/ui/Toast';
 import { useToast } from '@/lib/contexts/ToastContext';
-import { useAuth } from '@/lib/contexts/AuthContext';
 import { logger } from '@/lib/utils/logger';
-import { SummaryWithRelations, ContentWithRelations } from '@/lib/types/database';
-import { supabase } from '@/lib/utils/supabaseClient';
 
-interface SummaryWithTags extends SummaryWithRelations {
+interface TranscriptSegment {
+  text: string;
+  start: number;
+  duration: number;
+}
+
+interface SummaryWithTags {
+  title: string;
+  channelName: string;
+  date: string;
+  summary: string;
+  videoUrl: string;
   tags: string[];
-  content: ContentWithRelations & {
-    channel: {
-      name: string;
-    };
-  };
+  videoId: string;
+}
+
+// Add type for response error context
+interface ResponseErrorContext extends Record<string, unknown> {
+  status?: number;
+  statusText?: string;
+  responseText?: string;
+  parseError?: unknown;
+}
+
+interface ParseErrorContext extends Record<string, unknown> {
+  responseText: string;
+  parseError: unknown;
 }
 
 // Cache key for localStorage
@@ -31,8 +47,6 @@ interface CacheData {
 }
 
 export default function Home() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [summaries, setSummaries] = useState<SummaryWithTags[]>([]);
   const [recentSummaries, setRecentSummaries] = useState<SummaryWithTags[]>([]);
@@ -60,41 +74,75 @@ export default function Home() {
     }
   }, [isClient]); // Run when isClient becomes true
 
+  const generateTags = (title: string, summary: string): string[] => {
+    // Extract meaningful words from title and summary
+    const text = `${title} ${summary}`.toLowerCase();
+    const words = text.split(/\s+/);
+
+    // Common words to exclude
+    const stopWords = new Set([
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'but',
+      'in',
+      'on',
+      'at',
+      'to',
+      'for',
+      'of',
+      'with',
+      'by',
+    ]);
+
+    // Get unique meaningful words
+    const uniqueWords = new Set(
+      words
+        .filter(word => word.length > 2) // Filter out short words
+        .filter(word => !stopWords.has(word)) // Filter out stop words
+        .filter(word => /^[a-z]+$/.test(word)), // Only keep words with letters
+    );
+
+    // Convert words to title case and limit to 5 most relevant tags
+    return Array.from(uniqueWords)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .slice(0, 5);
+  };
+
   const handleSubmit = async (url: string) => {
     setIsLoading(true);
+    logger.info('Starting video processing', { url });
     try {
-      // Get the current session
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        toast.error('Please sign in to process videos');
-        router.push('/login');
-        return;
-      }
-
       // Process video using VideoProcessingService
+      logger.info('Sending request to process video', { url });
       const response = await fetch('/api/videos/process', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ url }),
       });
 
+      // Log the raw response for debugging
+      logger.info('Received response from server', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+
       // Get the response text first
       const responseText = await response.text();
+      logger.info('Received response text', { responseText });
 
       // Try to parse as JSON regardless of status
       let parsedResponse;
       try {
         parsedResponse = JSON.parse(responseText);
       } catch (parseError) {
-        logger.error('Failed to parse response as JSON', parseError as Error);
+        logger.error('Failed to parse response as JSON', parseError as Error, { responseText });
         throw new Error('Unexpected server response format');
       }
 
@@ -105,11 +153,17 @@ export default function Home() {
       }
 
       const summary = parsedResponse.data;
+      logger.info('Successfully processed video', { summary });
 
       // Transform database record to UI format
       const newSummary: SummaryWithTags = {
-        ...summary,
+        title: summary.videos.title,
+        channelName: summary.videos.channels.name,
+        date: new Date(summary.created_at).toLocaleDateString(),
+        summary: summary.summary,
+        videoUrl: summary.videos.url,
         tags: summary.tags || [],
+        videoId: summary.video_id,
       };
 
       // Get existing summaries from cache
@@ -141,11 +195,15 @@ export default function Home() {
       toast.success('Summary generated successfully!');
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error occurred');
-      logger.error('Failed to process video', err);
+      logger.error('Failed to process video', err, { url });
       toast.error(err.message);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleError = (error: string) => {
+    toast.error(error);
   };
 
   return (
@@ -188,17 +246,9 @@ export default function Home() {
               <div className='space-y-6'>
                 {recentSummaries.map((summary, index) => (
                   <div
-                    key={`${summary.id}-${index}`}
+                    key={`${summary.videoId}-${index}`}
                     className='transition-all duration-500 animate-fade-in'>
-                    <SummaryCard
-                      title={summary.content?.title || 'Unknown Title'}
-                      channelName={summary.content?.channel?.name}
-                      date={new Date(summary.created_at).toLocaleDateString()}
-                      summary={summary.summary}
-                      videoUrl={summary.content?.url || '#'}
-                      tags={summary.tags}
-                      videoId={summary.content_id || ''}
-                    />
+                    <SummaryCard {...summary} />
                   </div>
                 ))}
               </div>

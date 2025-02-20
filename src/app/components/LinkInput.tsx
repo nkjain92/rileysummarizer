@@ -12,41 +12,9 @@ export default function LinkInput({ onSubmit, isLoading }: LinkInputProps) {
   const [isValid, setIsValid] = useState(false);
 
   const validateYouTubeUrl = (url: string) => {
-    try {
-      const urlObj = new URL(url);
-      const isYouTubeDomain =
-        urlObj.hostname === 'youtube.com' ||
-        urlObj.hostname === 'www.youtube.com' ||
-        urlObj.hostname === 'youtu.be';
-
-      if (!isYouTubeDomain) return false;
-
-      let videoId: string | null = null;
-
-      // Handle different YouTube URL formats
-      if (urlObj.hostname.includes('youtube.com')) {
-        // Regular watch URLs
-        if (urlObj.pathname === '/watch') {
-          videoId = urlObj.searchParams.get('v');
-        }
-        // Shorts URLs
-        else if (urlObj.pathname.startsWith('/shorts/')) {
-          videoId = urlObj.pathname.split('/')[2];
-        }
-        // Live URLs
-        else if (urlObj.pathname.startsWith('/live/')) {
-          videoId = urlObj.pathname.split('/')[2];
-        }
-      }
-      // Handle youtu.be URLs
-      else if (urlObj.hostname === 'youtu.be') {
-        videoId = urlObj.pathname.slice(1);
-      }
-
-      return videoId ? /^[a-zA-Z0-9_-]{11}$/.test(videoId) : false;
-    } catch (error) {
-      return false;
-    }
+    const pattern =
+      /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|live\/|shorts\/|channel\/)|youtu\.be\/).+/;
+    return pattern.test(url);
   };
 
   useEffect(() => {

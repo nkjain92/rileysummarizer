@@ -5,16 +5,9 @@ import { extractVideoInfo } from "@/lib/utils/youtube";
 import { fetchTranscript } from "@/lib/utils/youtube";
 import { OpenAIStream } from "ai";
 
-interface VideoInfo {
-  videoId: string;
-  channelId: string | null;
-  title: string;
-}
-
 interface VideoSummary {
   videoId: string;
   channelId: string | null;
-  title: string;
   summary: string;
   detailed_summary: string;
   tags: string[];
@@ -41,7 +34,7 @@ export class OpenAIService {
    * @returns A VideoSummary object containing the summary, tags, and transcript
    */
   async processYouTubeVideo(url: string): Promise<VideoSummary> {
-    const videoInfo = await extractVideoInfo(url);
+    const videoInfo = extractVideoInfo(url);
     if (!videoInfo.videoId) {
       throw new AppError(
         "Invalid YouTube URL",
@@ -53,19 +46,6 @@ export class OpenAIService {
     // Get transcript
     const transcript = await fetchTranscript(videoInfo.videoId);
     const chunks = this.splitTranscript(transcript);
-
-    // Get video metadata from YouTube oEmbed
-    const oembedResponse = await fetch(
-      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`
-    );
-    if (!oembedResponse.ok) {
-      throw new AppError(
-        "Failed to fetch video metadata",
-        ErrorCode.API_SERVICE_UNAVAILABLE,
-        HttpStatus.INTERNAL_ERROR
-      );
-    }
-    const videoData = await oembedResponse.json();
 
     // Generate initial summary only (defer detailed summary)
     let finalSummary: string;
@@ -85,8 +65,7 @@ export class OpenAIService {
 
     return {
       videoId: videoInfo.videoId,
-      channelId: null,
-      title: videoData.title || 'Unknown Title',
+      channelId: videoInfo.channelId,
       summary: finalSummary,
       detailed_summary: "", // Will be generated on demand
       tags,
@@ -100,7 +79,7 @@ export class OpenAIService {
     let currentChunk = "";
 
     const sentences = transcript.split(/(?<=[.!?])\s+/);
-
+    
     for (const sentence of sentences) {
       if (currentChunk.length + sentence.length > MAX_CHUNK_LENGTH) {
         chunks.push(currentChunk.trim());
@@ -118,7 +97,7 @@ export class OpenAIService {
   }
 
   private async generateChunkSummary(chunk: string): Promise<string> {
-    const response = await retryApi(() =>
+    const response = await retryApi(() => 
       this.client.chat.completions.create({
         model: "gpt-4-turbo",
         messages: [
@@ -191,12 +170,12 @@ export class OpenAIService {
 
       return tags.length === 10 ? tags : [
         ...tags,
-        ...['Technology', 'Innovation', 'Education', 'Development', 'Business',
+        ...['Technology', 'Innovation', 'Education', 'Development', 'Business', 
             'Strategy', 'Growth', 'Success', 'Future', 'Insights'].slice(0, 10 - tags.length)
       ];
     } catch (error) {
       console.error("Error generating tags:", error);
-      return ['Technology', 'Innovation', 'Education', 'Development', 'Business',
+      return ['Technology', 'Innovation', 'Education', 'Development', 'Business', 
               'Strategy', 'Growth', 'Success', 'Future', 'Insights'];
     }
   }
@@ -271,4 +250,4 @@ export class OpenAIService {
       );
     }
   }
-}
+} 
