@@ -1,7 +1,7 @@
 import { StoredTranscript } from "@/lib/types/storage";
 import { AppError, ErrorCode, HttpStatus } from "@/lib/types/errors";
-import { 
-  getTranscript, 
+import {
+  getTranscript,
   storeTranscript
 } from "@/lib/utils/storage";
 import { extractVideoInfo } from "@/lib/utils/youtube";
@@ -49,23 +49,11 @@ export class VideoProcessingService extends DatabaseService {
   }
 
   /**
-   * Update a video record
-   */
-  async updateVideoRecord(videoId: string, transcript: StoredTranscript): Promise<VideoRecord> {
-    const update = {
-      last_updated: new Date().toISOString(),
-      language: transcript.language,
-    };
-
-    return this.updateVideo(videoId, update);
-  }
-
-  /**
    * Generate transcript for a video
    */
   private async generateTranscript(url: string, language?: string): Promise<StoredTranscript> {
     this.logger.info("Generating transcript", { url, language });
-    
+
     try {
       const videoInfo = extractVideoInfo(url);
       if (!videoInfo.videoId) {
@@ -76,21 +64,24 @@ export class VideoProcessingService extends DatabaseService {
         );
       }
 
-      // For now, just create a simple transcript with the video URL
+      // Process video using OpenAI service
+      const result = await this.openAIService.processYouTubeVideo(url);
+
+      // Create transcript object
       const transcript: StoredTranscript = {
         video_id: videoInfo.videoId,
         language: language || "en",
         segments: [
           {
-            text: `This is a placeholder transcript for video ${videoInfo.videoId}. Transcription service is currently not implemented.`,
+            text: result.transcript,
             start: 0,
             end: 1,
           }
         ],
         metadata: {
-          title: "Placeholder Title",
-          channel: "Placeholder Channel",
-          duration: 1,
+          title: "Unknown",
+          channel: "Unknown",
+          duration: 0,
           last_updated: new Date(),
         }
       };
@@ -106,27 +97,11 @@ export class VideoProcessingService extends DatabaseService {
   }
 
   /**
-   * Generate summary for a transcript using OpenAI
-   */
-  private async generateSummary(transcript: StoredTranscript): Promise<string> {
-    this.logger.info("Generating summary", { videoId: transcript.video_id });
-    
-    try {
-      const text = transcript.segments.map(s => s.text).join(" ");
-      const result = await this.openAIService.processYouTubeVideo(`https://youtube.com/watch?v=${transcript.video_id}`);
-      return result.summary;
-    } catch (error) {
-      this.logger.error("Failed to generate summary", error as Error);
-      throw error;
-    }
-  }
-
-  /**
    * Process a video URL
    */
   async processVideo(url: string, userId: string, options: VideoProcessingOptions = {}): Promise<UserSummaryRecord> {
     this.logger.info("Processing video", { url, userId, options });
-    
+
     try {
       const videoId = extractVideoInfo(url).videoId;
       if (!videoId) {
@@ -141,17 +116,10 @@ export class VideoProcessingService extends DatabaseService {
       let video = await this.findVideoRecord(videoId);
       let transcript: StoredTranscript;
 
-      if (!video || options.refresh) {
-        // Generate new transcript
+      // Generate new transcript if video doesn't exist
+      if (!video) {
         transcript = await this.generateTranscript(url, options.language);
-        
-        if (!video) {
-          // Create new video record
-          video = await this.createVideoRecord(videoId, url, transcript);
-        } else {
-          // Update existing video record
-          video = await this.updateVideoRecord(videoId, transcript);
-        }
+        video = await this.createVideoRecord(videoId, url, transcript);
       } else {
         // Get existing transcript
         const existingTranscript = await getTranscript(videoId);
@@ -165,24 +133,21 @@ export class VideoProcessingService extends DatabaseService {
         transcript = existingTranscript;
       }
 
-      // Generate summary if requested
-      let summary = "";
-      if (options.generateSummary !== false) {
-        summary = await this.generateSummary(transcript);
-      }
+      // Process video using OpenAI service
+      const result = await this.openAIService.processYouTubeVideo(url);
 
       // Create user summary
       const userSummary = await this.createUserSummary({
         user_id: userId,
         video_id: videoId,
-        summary,
-        detailed_summary: null,
-        tags: [],
+        summary: result.summary,
+        detailed_summary: null, // Will be generated on demand
+        tags: result.tags,
       });
 
-      this.logger.info("Processed video successfully", { 
+      this.logger.info("Processed video successfully", {
         videoId,
-        summaryId: userSummary.id 
+        summaryId: userSummary.id
       });
 
       return userSummary;
@@ -191,28 +156,4 @@ export class VideoProcessingService extends DatabaseService {
       throw error;
     }
   }
-
-  /**
-   * Refresh a video's transcript and summary
-   */
-  async refreshVideo(videoId: string, userId: string): Promise<UserSummaryRecord> {
-    this.logger.info("Refreshing video", { videoId, userId });
-    
-    try {
-      const video = await this.findVideoRecord(videoId);
-      if (!video) {
-        throw new AppError(
-          "Video not found",
-          ErrorCode.STORAGE_FILE_NOT_FOUND,
-          HttpStatus.NOT_FOUND
-        );
-      }
-
-      // Process video with refresh option
-      return this.processVideo(video.url, userId, { refresh: true });
-    } catch (error) {
-      this.logger.error("Failed to refresh video", error as Error);
-      throw error;
-    }
-  }
-} 
+}

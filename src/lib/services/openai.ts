@@ -21,11 +21,9 @@ export class OpenAIService {
   private client: OpenAI;
 
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OPENAI_API_KEY is not set");
-    }
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
   }
 
   /**
@@ -45,139 +43,97 @@ export class OpenAIService {
 
     // Get transcript
     const transcript = await fetchTranscript(videoInfo.videoId);
-    const chunks = this.splitTranscript(transcript);
 
-    // Generate initial summary only (defer detailed summary)
-    let finalSummary: string;
-    if (chunks.length > 1) {
-      // Process chunks in parallel
-      const chunkSummaries = await Promise.all(
-        chunks.map(chunk => this.generateChunkSummary(chunk))
-      );
-      const combinedSummary = chunkSummaries.join("\n\n");
-      finalSummary = await this.generateFinalSummary(combinedSummary);
-    } else {
-      finalSummary = await this.generateChunkSummary(chunks[0]);
-    }
+    // Generate summary directly
+    const summary = await this.generateSummary(transcript);
 
     // Generate tags in parallel with the summary
-    const tags = await this.generateTags(finalSummary);
+    const tags = await this.generateTags(summary);
 
     return {
       videoId: videoInfo.videoId,
       channelId: videoInfo.channelId,
-      summary: finalSummary,
+      summary,
       detailed_summary: "", // Will be generated on demand
       tags,
       transcript
     };
   }
 
-  private splitTranscript(transcript: string): string[] {
-    const MAX_CHUNK_LENGTH = 3000;
-    const chunks: string[] = [];
-    let currentChunk = "";
-
-    const sentences = transcript.split(/(?<=[.!?])\s+/);
-
-    for (const sentence of sentences) {
-      if (currentChunk.length + sentence.length > MAX_CHUNK_LENGTH) {
-        chunks.push(currentChunk.trim());
-        currentChunk = sentence;
-      } else {
-        currentChunk += " " + sentence;
-      }
-    }
-
-    if (currentChunk.trim()) {
-      chunks.push(currentChunk.trim());
-    }
-
-    return chunks;
-  }
-
-  private async generateChunkSummary(chunk: string): Promise<string> {
+  /**
+   * Generate a summary of the transcript
+   */
+  private async generateSummary(transcript: string): Promise<string> {
     const response = await retryApi(() =>
       this.client.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-3.5-turbo",
         messages: [
           {
             role: "system",
-            content: "You are an expert in synthesizing information. Create clear, informative summaries that capture the main ideas, key points, and important details. Focus on accuracy and clarity while maintaining context. Use natural language and avoid redundancy. Do not include terms like 'The summarized content is:' or 'The summary is:', etc. It has to be the best summary someone can get from the content. Depending on the nature of the content, provide the key highlights in bullet points."
+            content: "You are a highly skilled summarizer. Create a concise summary of the video transcript provided. Focus on the main points and key takeaways."
           },
           {
             role: "user",
-            content: `Create a clear and informative summary of this content, highlighting the main ideas and key points:\n\n${chunk}`
+            content: transcript
           }
         ],
-        temperature: 0.3,
-        max_tokens: 300
+        temperature: 0.7,
+        max_tokens: 500
       })
     );
 
     return response.choices[0].message.content || "";
   }
 
-  private async generateFinalSummary(combinedSummaries: string): Promise<string> {
-    const response = await retryApi(() =>
-      this.client.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert content synthesizer. Create cohesive, engaging summaries that weave together key points into a clear narrative. Focus on the most important insights while maintaining logical flow and readability. Use clear topic transitions and ensure the summary is both informative and accessible."
-          },
-          {
-            role: "user",
-            content: `Create a cohesive final summary that synthesizes these key points into a clear narrative:\n\n${combinedSummaries}`
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 400
-      })
-    );
-
-    return response.choices[0].message.content || "";
-  }
-
+  /**
+   * Generate tags for the video based on the summary
+   */
   private async generateTags(summary: string): Promise<string[]> {
-    try {
-      const response = await retryApi(() =>
-        this.client.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "Generate relevant, concise tags for content categorization. Each tag should be 1-3 words, under 25 characters, and represent key themes or topics. Do not include numbers, hashtags, or special characters."
-            },
-            {
-              role: "user",
-              content: `Generate 10 relevant tags for this content:\n\n${summary}`
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 100
-        })
-      );
+    const response = await retryApi(() =>
+      this.client.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "Generate 5-7 relevant tags for this video based on its summary. Return only the tags as a comma-separated list."
+          },
+          {
+            role: "user",
+            content: summary
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 100
+      })
+    );
 
-      const content = response.choices[0].message.content || "";
-      const tags = content
-        .split('\n')
-        .map(line => line.trim())
-        .map(tag => tag.replace(/^[0-9.)\-]+|[^a-zA-Z0-9\s]/g, '').trim()) // Remove numbers and special chars
-        .filter(tag => tag.length > 1 && tag.length <= 25)
-        .slice(0, 10);
+    const tags = response.choices[0].message.content?.split(",") || [];
+    return tags.map(tag => tag.trim()).filter(tag => tag.length > 0);
+  }
 
-      return tags.length === 10 ? tags : [
-        ...tags,
-        ...['Technology', 'Innovation', 'Education', 'Development', 'Business',
-            'Strategy', 'Growth', 'Success', 'Future', 'Insights'].slice(0, 10 - tags.length)
-      ];
-    } catch (error) {
-      console.error("Error generating tags:", error);
-      return ['Technology', 'Innovation', 'Education', 'Development', 'Business',
-              'Strategy', 'Growth', 'Success', 'Future', 'Insights'];
-    }
+  /**
+   * Generate a detailed summary on demand
+   */
+  async generateDetailedSummary(transcript: string): Promise<string> {
+    const response = await retryApi(() =>
+      this.client.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "Create a detailed summary of the video transcript. Include important details, key points, and maintain the logical flow of information."
+          },
+          {
+            role: "user",
+            content: transcript
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000
+      })
+    );
+
+    return response.choices[0].message.content || "";
   }
 
   /**

@@ -20,7 +20,7 @@
 ## 3. View and Customize Summary
 
 - Users should be able to view the **default generated summary**.
-- Users should also have the option to see **a more detailed summary** or **a shorter summary** on the same summary card.
+- Users should also have the option to see **a more detailed summary** on the same summary card.
 
 ## 4. Interactive Q&A with Summary
 

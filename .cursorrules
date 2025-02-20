@@ -99,3 +99,57 @@ The goal is to help you maintain a big picture as well as the progress of the ta
 28. Use anonymous IDs for unauthenticated operations to simplify development
 
 # Scratchpad
+
+## Task: Remove Extra Features and Simplify App
+
+### Changes Required:
+
+1. Remove Supabase Storage Integration
+
+   - Remove transcript storage in Supabase
+   - Keep in-memory storage for now (simpler and faster)
+   - Remove related code from storage.ts
+
+2. Remove Refresh Functionality
+
+   - Remove /api/videos/refresh endpoint
+   - Remove refresh-related code from VideoProcessingService
+   - Remove any UI components/logic related to refresh
+
+3. Simplify Summary Generation
+   - Remove chunking process
+   - Directly generate summary from transcript
+   - Keep detailed summary generation for on-demand only
+
+### Plan:
+
+[X] 1. Remove Supabase Storage
+
+- [x] Remove storage.ts Supabase code
+- [x] Keep/modify in-memory storage functions
+- [x] Update VideoProcessingService to use in-memory only
+
+[X] 2. Remove Refresh Feature
+
+- [x] Delete refresh route file
+- [x] Remove refresh methods from VideoProcessingService
+- [x] Clean up any imports/references
+
+[X] 3. Simplify Summary Generation
+
+- [x] Modify OpenAIService to remove chunking
+- [x] Update processYouTubeVideo method
+- [x] Keep detailed summary generation separate
+
+### Summary of Changes Made:
+
+1. Removed Supabase storage integration and replaced with simple in-memory storage using Map
+2. Deleted the refresh route and removed all refresh-related functionality
+3. Simplified the summary generation by:
+   - Removing chunking process
+   - Using direct summary generation
+   - Keeping detailed summary generation as a separate on-demand feature
+4. Updated the OpenAIService to use simpler, more direct approach
+5. Streamlined VideoProcessingService by removing unnecessary complexity
+
+All tasks have been completed. The app should now be simpler and faster while maintaining core functionality.
